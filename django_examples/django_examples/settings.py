@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'django_modals',
     'show_src_code',
     'crispy_forms',
+    'crispy_bootstrap4',
 ]
 
 MIDDLEWARE = [
@@ -58,6 +59,7 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'django_examples.urls'
+CRISPY_ALLOWED_TEMPLATE_PACKS = ('bootstrap4',)
 CRISPY_TEMPLATE_PACK = 'bootstrap4'
 
 # Normally just a pack name ('bootstrap4' or 'bootstrap5'). The example app serves both,
@@ -122,8 +124,6 @@ LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 
 USE_I18N = True
-
-USE_L10N = True
 
 USE_TZ = True
 

@@ -1,0 +1,9 @@
+# Installed with --no-deps:
+#
+#     pip install --no-deps -r requirements-no-deps.txt
+#
+# django-show-source-code depends on django-nested-modals and django-ajax-helpers. Those install
+# the same `django_modals` and `ajax_helpers` modules as django-advanced-modals and
+# ajax-advanced-helpers, so whichever pip installs last overwrites the other's files. Its one
+# other dependency, requests, is in requirements.txt.
+django-show-source-code==0.0.8

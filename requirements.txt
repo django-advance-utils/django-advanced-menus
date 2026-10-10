@@ -1,5 +1,7 @@
-Django==3.2.7
-ajax-advanced-helpers==1.0.1
-django-show-source-code==0.0.7
-django-nested-modals==0.0.18
-django-crispy-forms==1.12.0
+Django==5.2.18
+ajax-advanced-helpers==1.0.5
+django-advanced-modals==1.0.3
+django-crispy-forms==2.7
+crispy-bootstrap4==2026.2
+# Needed by django-show-source-code, which requirements-no-deps.txt installs without its own.
+requests==2.34.2

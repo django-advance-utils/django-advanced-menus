@@ -12,7 +12,22 @@ does. It depends on [ajax-advanced-helpers](https://github.com/django-advance-ut
 
     pip install django-advanced-menus
 
-See example django project with docker compose file 
+See example django project with docker compose file. To run it without Docker, install both
+requirements files, the second without dependencies:
+
+    pip install -r requirements.txt
+    pip install --no-deps -r requirements-no-deps.txt
+
+and run it from `django_examples` with the checkout on the path:
+
+    cd django_examples
+    PYTHONPATH=.. python manage.py migrate
+    PYTHONPATH=.. python manage.py runserver
+
+`PYTHONPATH=..` matters: django-advanced-modals depends on django-advanced-menus, so the requirements
+install a copy from PyPI as well, and without it the example runs that copy rather than your
+checkout. docker-compose sets `PYTHONPATH=/menus` for the same reason. `requirements-no-deps.txt`
+says why it is installed separately.
 
 Add to installed apps in settings   
 `'django_menus',`
