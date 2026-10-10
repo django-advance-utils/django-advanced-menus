@@ -29,14 +29,35 @@ A label is now escaped unless it is marked safe, and the same goes for each attr
 `MenuItem.attributes()` writes (a quote in a `tooltip` could otherwise close `title=""` and start
 another attribute).
 
-Nothing changes for a label that is the app's own words. **A label that is markup has to say so
-where it is made:**
+Nothing changes for a label that is the app's own words. **A label that is markup says so with
+`safe=True`** (added in 1.0.2; on 1.0.1, use `mark_safe`):
+
+```python
+MenuItem(url='home', menu_display='<i class="fas fa-lock"></i> Disable', safe=True)
+MenuItemDisplay('<i class="fas fa-lock"></i> Disable', safe=True)
+
+menu.add_items(
+    ('home', '<span class="btn-info">HTML</span>', {'safe': True}),
+)
+```
+
+`safe` is off by default, and it covers the label only: the `font_awesome` class and attribute
+values such as `tooltip` are still escaped. A label already marked safe where it was made —
+`mark_safe`, `format_html`, a rendered template — is left alone as well, with or without the flag.
+
+When `menu_display` is already a `MenuItemDisplay`, it is that display's own `safe` that counts,
+the same as its own `font_awesome` and `css_classes`: `MenuItem(safe=True)` is ignored there, so
+put the flag on the display instead —
+`MenuItem(url='home', menu_display=MenuItemDisplay('<b>Edit</b>', css_classes='btn-info', safe=True))`.
+The same goes for a `button_defaults` entry: the display it puts in place has its own `safe`.
+
+Don't use `safe=True` on a label built from a value. `safe=True` says the *whole* string is
+trusted, so the value inside it would not be escaped; `format_html` escapes the value and keeps the
+markup around it:
 
 ```python
 from django.utils.html import format_html
-from django.utils.safestring import mark_safe
 
-MenuItem(url='home', menu_display=mark_safe('<i class="fas fa-lock"></i> Disable'))
 MenuItem(url='home', menu_display=format_html('<img src="{}" class="avatar">', user.avatar_url))
 ```
 
