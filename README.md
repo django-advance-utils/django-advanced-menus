@@ -12,7 +12,13 @@ does. It depends on [ajax-advanced-helpers](https://github.com/django-advance-ut
 
     pip install django-advanced-menus
 
-See example django project with docker compose file 
+See example django project with docker compose file. To run it without Docker, install both
+requirements files, the second without dependencies:
+
+    pip install -r requirements.txt
+    pip install --no-deps -r requirements-no-deps.txt
+
+`requirements-no-deps.txt` says why.
 
 Add to installed apps in settings   
 `'django_menus',`

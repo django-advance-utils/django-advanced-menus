@@ -59,7 +59,7 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'django_examples.urls'
-CRISPY_ALLOWED_TEMPLATE_PACKS = 'bootstrap4'
+CRISPY_ALLOWED_TEMPLATE_PACKS = ('bootstrap4',)
 CRISPY_TEMPLATE_PACK = 'bootstrap4'
 
 # Normally just a pack name ('bootstrap4' or 'bootstrap5'). The example app serves both,
