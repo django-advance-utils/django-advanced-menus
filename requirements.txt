@@ -1,5 +1,6 @@
-Django==3.2.7
-ajax-advanced-helpers==1.0.1
-django-show-source-code==0.0.7
-django-nested-modals==0.0.18
-django-crispy-forms==1.12.0
+Django==5.2.18
+ajax-advanced-helpers==1.0.5
+django-show-source-code==0.0.8
+django-nested-modals==0.0.25
+django-crispy-forms==2.7
+crispy-bootstrap4==2026.2
