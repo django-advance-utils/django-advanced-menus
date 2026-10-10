@@ -18,7 +18,16 @@ requirements files, the second without dependencies:
     pip install -r requirements.txt
     pip install --no-deps -r requirements-no-deps.txt
 
-`requirements-no-deps.txt` says why.
+and run it from `django_examples` with the checkout on the path:
+
+    cd django_examples
+    PYTHONPATH=.. python manage.py migrate
+    PYTHONPATH=.. python manage.py runserver
+
+`PYTHONPATH=..` matters: django-advanced-modals depends on django-advanced-menus, so the requirements
+install a copy from PyPI as well, and without it the example runs that copy rather than your
+checkout. docker-compose sets `PYTHONPATH=/menus` for the same reason. `requirements-no-deps.txt`
+says why it is installed separately.
 
 Add to installed apps in settings   
 `'django_menus',`
