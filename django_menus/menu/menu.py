@@ -7,25 +7,22 @@ from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 from django.views.generic import TemplateView, View
 
-from django_menus.menu import MenuItem, BaseMenuItem
-from django_menus.packs import render_pack_template
+from ..css_framework import css_classes
+from .menu_items import MenuItem, BaseMenuItem
 
 
 class HtmlMenu:
 
-    # Not in a pack: it is a keyboard handler, not Bootstrap markup.
     key_press_template = 'django_menus/menu_key_press.html'
 
-    # Logical name -> file within the template pack. The pack is chosen per request, so these
-    # are bare filenames rather than paths; see django_menus.packs.
     templates = {
-        'base': 'main_menu.html',
-        'tabs': 'tab_menu.html',
-        'button_group': 'button_group.html',
-        'breadcrumb': 'breadcrumb.html',
-        'dropdown': 'dropdown.html',
-        'buttons': 'button_menu.html',
-        'context': 'context_menu.html',
+        'base': 'django_menus/main_menu.html',
+        'tabs': 'django_menus/tab_menu.html',
+        'button_group': 'django_menus/button_group.html',
+        'breadcrumb': 'django_menus/breadcrumb.html',
+        'dropdown': 'django_menus/dropdown.html',
+        'buttons': 'django_menus/button_menu.html',
+        'context': 'django_menus/context_menu.html',
     }
 
     def __init__(self, request=None, template='base', menu_id=None, default_link_type=MenuItem.URL_NAME,
@@ -41,11 +38,7 @@ class HtmlMenu:
         if button_defaults is not None:
             self.button_defaults.update(button_defaults)
 
-        # A name from the table is resolved against the pack at render time. Anything else is
-        # taken as a template path the caller supplied, and used as given -- a pack cannot
-        # second-guess a path it did not write.
-        self.template_name = self.templates.get(template)
-        self.template = None if self.template_name else template
+        self.template = self.templates.get(template, template)
         self.request = request
         self.active = None
         self.no_hover = no_hover
@@ -70,8 +63,8 @@ class HtmlMenu:
                 self.menu_items.append(a)
             elif isinstance(a, View):
                 self.add_item(a.request.path, getattr(a, 'menu_display', None), MenuItem.HREF)
-            elif type(a) == tuple:
-                if type(a[-1]) == dict:
+            elif isinstance(a, (tuple, list)):
+                if isinstance(a[-1], dict):
                     self.add_item(*a[:-1], **a[-1])
                 else:
                     self.add_item(*a)
@@ -81,7 +74,7 @@ class HtmlMenu:
 
     def badge_ajax(self):
         return [{'function': 'html', 'selector': '#' + i.badge.id, 'html': i.badge.badge_html()}
-                for i in self.menu_items if i.has_badge]
+                for i in self.menu_items if i.has_badge and i.badge.id]
 
     def render(self):
         if self.fixed_id:
@@ -112,17 +105,14 @@ class HtmlMenu:
                             key_data['alt'] = True
                         else:
                             key_data['key'] = k
-                    key_dict[key_data['key']] = key_data
+                    if 'key' in key_data:
+                        key_dict[key_data['key']] = key_data
             no_items = False
         if no_items:
             return ''
         keyboard = render_to_string(self.key_press_template,
                                     context={'key_dict': json.dumps(key_dict)}) if key_dict else ''
-        if self.template_name:
-            body = render_pack_template(self.template_name, {'menu': self}, self.request)
-        else:
-            body = render_to_string(self.template, context={'menu': self})
-        return mark_safe(body + extra_menus + keyboard)
+        return mark_safe(render_to_string(self.template, context={'menu': self, 'css': css_classes()}) + extra_menus + keyboard)
 
 
 class MenuMixin:
@@ -160,7 +150,7 @@ class MenuMixin:
 
     def get_context_data(self, **kwargs):
         self.setup_menu()
-        super_context = getattr(super(), 'get_context_data')
+        super_context = getattr(super(), 'get_context_data', None)
         if super_context and callable(super_context):
             context = super_context(**kwargs)
         else:
@@ -195,7 +185,7 @@ class AjaxMenuTemplateView(AjaxHelpers, MenuTemplateView):
 
 
 class AjaxMenuDropDownItem(MenuItem):
-    def __init__(self, *args, value=None, dropdown_view_name='dropdown_menu', menu_display='', template='ajax_dropdown.html', **kwargs):
+    def __init__(self, *args, value=None, dropdown_view_name='dropdown_menu', menu_display='', template='django_menus/ajax_dropdown.html', **kwargs):
         self.value = value
         self.dropdown_view_name = dropdown_view_name
         super().__init__(*args, menu_display=menu_display, template=template, **kwargs)

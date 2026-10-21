@@ -1,0 +1,7 @@
+<li class="nav-item" id="tooltip-{{ tooltip_name }}">
+    <a class="django-menus-item nav-link" href="javascript:void(0)">{{ menu_item.name }}</a>
+</li>
+<script>
+    ajax_helpers.tooltip('#tooltip-{{ tooltip_name }}', '{{ tooltip_name }}', null,
+        '{{ tooltip_template }}')
+</script>
