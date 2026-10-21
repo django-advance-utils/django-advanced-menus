@@ -100,6 +100,7 @@ class HtmlMenu:
                 extra_menu = i.dropdown.render()
                 if not extra_menu:
                     i.visible = False
+                    continue
                 extra_menus += extra_menu
             if getattr(i, 'key', None):
                 key_list = [i.key] if isinstance(i.key, str) else i.key

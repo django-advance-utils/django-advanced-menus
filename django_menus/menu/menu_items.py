@@ -328,12 +328,12 @@ class MenuItem(BaseMenuItem):
         self._resolved_url = None
         self.link_type = link_type
         self.key = key
-        self.permission_name = permission_name if permission_name else url
         if self.link_type in [self.URL_NAME, self.AJAX_GET_URL_NAME]:
             split_url = url.split(',') if url else [None]
             if url_args is None and len(split_url) > 1:
                 url_args = split_url[1:]
                 url = split_url[0]
+        self.permission_name = permission_name if permission_name else url
         self._href = self.raw_href(url, url_args, url_kwargs, **kwargs)
         self._attributes = self.attr(attributes, tooltip)
         # Milliseconds to hold THIS item for after it is clicked, overriding whatever the menu or
@@ -578,6 +578,9 @@ class AjaxButtonMenuItem(MenuItem):
 
     def __init__(self, button_name, menu_display=None, url_name=None, url_args=None, ajax_kwargs=None, **kwargs):
         ajax_kwargs = ajax_kwargs if ajax_kwargs else {}
+        self.button_name = button_name
+        self.button_url_name = url_name
+        kwargs['permission_name'] = kwargs.get('permission_name') or button_name
         super().__init__(button_javascript(button_name, url_name, url_args, **ajax_kwargs).replace('"', "'"),
                          menu_display,
                          link_type=MenuItem.JAVASCRIPT,
