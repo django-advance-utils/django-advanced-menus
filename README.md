@@ -206,6 +206,8 @@ menu.add_items(
 
 `HeaderItem` renders a non-clickable section header (`dropdown-header`); `DividerItem` a separator line. Options: `show_caret=False` hides the caret; `no_hover=True` requires a click to open.
 
+Once a dropdown's button is wired up it carries a `data-django-menus-bound` attribute. The handlers are plain event listeners, which nothing in the page can list, so code that must wait for a menu to be live (a Playwright helper, say) waits for that attribute. A click-opened menu closes when focus leaves both its button and the menu, but not when focus moves from one to the other, so it can be opened and used from the keyboard.
+
 ### AJAX-loaded dropdowns
 
 `AjaxMenuDropDownItem` renders a button whose dropdown contents are fetched from the server when clicked — useful when the items are expensive to build or depend on live data. The click posts `{"ajax": "<dropdown_view_name>"}` (default `'dropdown_menu'`) to the current view, which responds with `add_ajax_dropdown_menu`:

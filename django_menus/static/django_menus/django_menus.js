@@ -74,6 +74,32 @@ document.addEventListener('keydown', function (e) {
     }
 });
 
+// A click-opened menu closes when focus leaves its button - but not when focus has only moved between
+// the button and the menu itself. The menu is rendered after the bar rather than inside the button, so
+// handing focus into it from the keyboard is a focusout on the button, and closing then made a
+// click-opened menu impossible to reach without a mouse. relatedTarget is null when focus goes nowhere
+// in the page (or the browser does not say), which is read as leaving.
+function close_on_focus_leaving(reference, menu) {
+    function on_focusout(e) {
+        var next = e.relatedTarget;
+        if (next && (menu.contains(next) || reference.contains(next))) {
+            return;
+        }
+        if (menu.classList.contains('clicked') && !is_hovered(menu)) {
+            hide_menu(menu);
+        }
+    }
+    reference.addEventListener('focusout', on_focusout);
+    menu.addEventListener('focusout', on_focusout);
+}
+
+// Says on the button that its handlers are attached. The handlers are plain listeners, which nothing
+// in the page can list, and a button can be in the DOM before the inline script that wires it has run -
+// so a test, or any code that has to wait for a menu to be live, waits for this attribute instead.
+function mark_bound(reference) {
+    reference.setAttribute('data-django-menus-bound', '');
+}
+
 var dropdown_menu_function = function dropdown_menu_function(reference) {
     var placement = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'bottom-start';
     reference = menu_element(reference);
@@ -119,11 +145,8 @@ var dropdown_menu_function = function dropdown_menu_function(reference) {
         }
     });
 
-    reference.addEventListener('focusout', function () {
-        if (menu.classList.contains('clicked') && !is_hovered(menu)) {
-            hide_menu(menu);
-        }
-    });
+    close_on_focus_leaving(reference, menu);
+    mark_bound(reference);
 };
 
 var dropdown_menu_click = function dropdown_menu_click(reference) {
@@ -147,11 +170,8 @@ var dropdown_menu_click = function dropdown_menu_click(reference) {
         }
     });
 
-    reference.addEventListener('focusout', function () {
-        if (menu.classList.contains('clicked') && !is_hovered(menu)) {
-            hide_menu(menu);
-        }
-    });
+    close_on_focus_leaving(reference, menu);
+    mark_bound(reference);
 };
 
 
