@@ -207,7 +207,9 @@ refresh and a second tab all still send the request twice.
   on the **current page's** view class.
 
 Both are called on the class, so they are classmethods or staticmethods, and return a bool. A refused
-item is not drawn, and a dropdown left with nothing in it goes too, button, shortcut key and all.
+item is not drawn, and a dropdown left with nothing in it goes too, button, shortcut key and all. A
+divider left with nothing to divide (first, last, or straight after another divider) is not drawn
+either.
 
 `item.permission_name` names the item for those hooks: the `permission_name=` it was given,
 otherwise its url name without any `,args`, or for an `AjaxButtonMenuItem` its button name. An

@@ -59,6 +59,18 @@ class HtmlMenu:
     def visible_items(self):
         return [i for i in self.menu_items if i.visible]
 
+    def tidy_dividers(self):
+        from .menu_items import DividerItem
+
+        previous = None
+        for item in self.visible_items():
+            if isinstance(item, DividerItem) and (previous is None or isinstance(previous, DividerItem)):
+                item.visible = False
+            else:
+                previous = item
+        if isinstance(previous, DividerItem):
+            previous.visible = False
+
     def add_item(self, url_name=None, text=None,  link_type=None, **kwargs):
         link_type = link_type if link_type is not None else self.default_link_type
         self.menu_items.append(MenuItem(url=url_name, menu_display=text, menu=self, link_type=link_type, **kwargs))
@@ -115,7 +127,8 @@ class HtmlMenu:
                             key_data['key'] = k
                     key_dict[key_data['key']] = key_data
             no_items = False
-        if no_items:
+        self.tidy_dividers()
+        if no_items or not any(i.visible for i in self.menu_items):
             return ''
         keyboard = render_to_string(self.key_press_template,
                                     context={'key_dict': json.dumps(key_dict)}) if key_dict else ''
