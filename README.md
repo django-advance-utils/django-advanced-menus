@@ -197,6 +197,23 @@ download, a `target="_blank"` - cannot leave a link looking permanently dead.
 This is defence in depth, not a substitute for making such a view idempotent - the back button, a
 refresh and a second tab all still send the request twice.
 
+### Permission hooks
+
+`MenuItem.test_visible` asks the views involved whether an item may be shown:
+
+* a link, tab or modal item (`HREF`, `URL_NAME`, `AJAX_GET_URL_NAME`) calls
+  `view_permission(request, item)` on the **target** view class, if it has one;
+* anything else (`AJAX_BUTTON`, `JAVASCRIPT`, `AJAX_COMMAND`) calls `menu_permissions(request, item)`
+  on the **current page's** view class.
+
+Both are called on the class, so they are classmethods or staticmethods, and return a bool. A refused
+item is not drawn, and a dropdown left with nothing in it goes too, button, shortcut key and all.
+
+`item.permission_name` names the item for those hooks: the `permission_name=` it was given,
+otherwise its url name without any `,args`, or for an `AjaxButtonMenuItem` its button name. An
+`AjaxButtonMenuItem` also keeps `button_name` and `button_url_name` (the view that answers it, when
+that is not the current page).
+
 ## Bootstrap 4 and Bootstrap 5
 
 Menus ships a template pack per Bootstrap version:
