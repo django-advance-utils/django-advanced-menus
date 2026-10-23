@@ -10,108 +10,283 @@ the downstream libraries and django-advanced-report-builder need them. The Pytho
 `django_menus`, so existing imports and `INSTALLED_APPS` entries do not change; only the pip name
 does. It depends on [ajax-advanced-helpers](https://github.com/django-advance-utils/ajax-advanced-helpers).
 
-    pip install django-advanced-menus
+## Installation
 
-See example django project with docker compose file. To run it without Docker, install both
-requirements files, the second without dependencies:
+```bash
+pip install django-advanced-menus
+```
 
-    pip install -r requirements.txt
-    pip install --no-deps -r requirements-no-deps.txt
-
-and run it from `django_examples` with the checkout on the path:
-
-    cd django_examples
-    PYTHONPATH=.. python manage.py migrate
-    PYTHONPATH=.. python manage.py runserver
-
-`PYTHONPATH=..` matters: django-advanced-modals depends on django-advanced-menus, so the requirements
-install a copy from PyPI as well, and without it the example runs that copy rather than your
-checkout. docker-compose sets `PYTHONPATH=/menus` for the same reason. `requirements-no-deps.txt`
-says why it is installed separately.
-
-Add to installed apps in settings   
-`'django_menus',`
-    
-
-### A label is text unless it says otherwise
-
-**Changed in 1.0.1.** `MenuItemDisplay.display()` used to return `mark_safe(self.text)`, so every
-label reached the page as markup whether it meant to or not. A label that comes from a value — a
-project's name, a file's name, a report's name — put that value into the page unescaped, and an
-item was safe only because its caller happened to escape it.
-
-A label is now escaped unless it is marked safe, and the same goes for each attribute value
-`MenuItem.attributes()` writes (a quote in a `tooltip` could otherwise close `title=""` and start
-another attribute).
-
-Nothing changes for a label that is the app's own words. **A label that is markup says so with
-`safe=True`** (added in 1.0.2; on 1.0.1, use `mark_safe`):
+Add to `INSTALLED_APPS`:
 
 ```python
-MenuItem(url='home', menu_display='<i class="fas fa-lock"></i> Disable', safe=True)
-MenuItemDisplay('<i class="fas fa-lock"></i> Disable', safe=True)
+INSTALLED_APPS = [
+    ...
+    'django_menus',
+]
+```
 
+### Upgrading to 2.0 from django-advanced-menus 1.0.x
+
+- The menu JavaScript no longer needs jQuery or Popper. Dropdowns are positioned by a bundled copy of Floating UI, which `{% lib_include module='django_menus.includes' %}` loads before `django_menus.js`.
+- Bootstrap 5 is chosen by the ecosystem-wide `CSS_FRAMEWORK = 'bootstrap5'` that ajax-advanced-helpers reads; see [Bootstrap 4 / 5](#bootstrap-4--5). `DJANGO_MENUS_TEMPLATE_PACK` and the `bootstrap4/` and `bootstrap5/` template folders are gone: there is one set of templates again, at `django_menus/<name>.html`, and a project override at that path keeps working.
+- Labels and attribute values are escaped unless marked safe (since 1.0.1); see [Escaping](#escaping).
+
+- Python 3.9 or later is required (ajax-advanced-helpers already needed it).
+- A dropdown button carries `data-django-menus-bound` once it is wired, for code that used to wait on jQuery's event registry; see [Dropdowns](#dropdowns).
+
+To stay on the jQuery version, pin `django-advanced-menus<2.0`.
+
+Coming from Ian Jones's django-tab-menus, the Python package is the same `django_menus`; swap the pip name, and note that escaping here is always on rather than chosen by `DJANGO_MENUS_ESCAPE_*` settings.
+
+## Quick Start
+
+The simplest menu is built with `HtmlMenu` and rendered in a template:
+
+```python
+from django_menus.menu import HtmlMenu, MenuItem, MenuMixin
+from django.views.generic import TemplateView
+
+class MyView(MenuMixin, TemplateView):
+    template_name = 'my_template.html'
+
+    def setup_menu(self):
+        self.add_menu('main', 'base').add_items(
+            'home',          # Django URL name — label auto-derived from view
+            ('about', 'About Us'),
+            ('contact', 'Contact'),
+        )
+```
+
+In the template:
+
+```html
+{% load django_menu_tags %}
+{% menu_content 'main' %}
+```
+
+`MenuMixin` injects all menus into the template context under `menus`, so `menus.main` is also accessible directly.
+
+Two ready-made view classes save the boilerplate: `MenuTemplateView` is `MenuMixin + TemplateView`, and `AjaxMenuTemplateView` additionally mixes in ajax-advanced-helpers AJAX handling (needed for badge refresh, tabs and context menus).
+
+## Menu Types
+
+Pass a template name as the second argument to `add_menu()` (or as `template=` on `HtmlMenu`):
+
+| Name | Layout |
+|---|---|
+| `'base'` | Bootstrap navbar |
+| `'button_group'` | Inline button group |
+| `'buttons'` | Stacked buttons |
+| `'tabs'` | Tab bar |
+| `'breadcrumb'` | Breadcrumb trail |
+| `'dropdown'` | Standalone dropdown |
+
+## Adding Items
+
+### String shorthand
+
+Passing a URL name string resolves the view and auto-derives the label from `view.menu_display` or the URL name:
+
+```python
+menu.add_items('dashboard', 'reports', 'settings')
+```
+
+### Tuple shorthand
+
+```python
 menu.add_items(
-    ('home', '<span class="btn-info">HTML</span>', {'safe': True}),
+    ('reports', 'My Reports'),                          # (url_name, label)
+    ('reports', 'My Reports', {'css_classes': 'btn-primary'}),  # with kwargs
 )
 ```
 
-`safe` is off by default, and it covers the label only: the `font_awesome` class and attribute
-values such as `tooltip` are still escaped. A label already marked safe where it was made —
-`mark_safe`, `format_html`, a rendered template — is left alone as well, with or without the flag.
+### `MenuItem` class
 
-When `menu_display` is already a `MenuItemDisplay`, it is that display's own `safe` that counts,
-the same as its own `font_awesome` and `css_classes`: `MenuItem(safe=True)` is ignored there, so
-put the flag on the display instead —
-`MenuItem(url='home', menu_display=MenuItemDisplay('<b>Edit</b>', css_classes='btn-info', safe=True))`.
-The same goes for a `button_defaults` entry: the display it puts in place has its own `safe`.
-
-Don't use `safe=True` on a label built from a value. `safe=True` says the *whole* string is
-trusted, so the value inside it would not be escaped; `format_html` escapes the value and keeps the
-markup around it:
+The full item API:
 
 ```python
-from django.utils.html import format_html
-
-MenuItem(url='home', menu_display=format_html('<img src="{}" class="avatar">', user.avatar_url))
+MenuItem(
+    url,                        # URL name, raw URL, JS string, or AJAX command
+    menu_display=None,          # str, tuple, or MenuItemDisplay instance
+    link_type=MenuItem.URL_NAME,
+    css_classes=None,           # str or list
+    font_awesome=None,          # e.g. 'fas fa-edit'
+    tooltip=None,
+    badge=None,                 # MenuItemBadge instance
+    dropdown=None,              # tuple of items for a nested dropdown
+    show_caret=True,
+    key=None,                   # keyboard shortcut, e.g. 'alt-s' or ['alt-s', 'shift-S']
+    url_args=None,
+    url_kwargs=None,
+    attributes=None,            # dict of extra HTML attributes
+    visible=True,
+    disabled=False,
+    target=None,                # link target, e.g. '_blank'
+)
 ```
 
-An icon does not need either — pass it as `font_awesome` and the library builds the `<i>` itself:
+### Raw HTML
+
+`HtmlMenuItem` injects arbitrary HTML into a menu slot:
 
 ```python
-MenuItem(url='home', menu_display='Disable', font_awesome='fas fa-lock')
+from django_menus.menu import HtmlMenuItem
+
+menu.add_items(HtmlMenuItem(html='<span class="navbar-text">v2.1</span>'))
 ```
 
-A caller that was already escaping its own label keeps working: `escape()` returns a `SafeString`,
-which `conditional_escape` leaves alone, so nothing is escaped twice.
+## Link Types
 
-An attribute **name** is checked rather than escaped, and dropped when it is not a plain attribute
-name — escaping would not help, since a name is not quoted and a key such as `x onmouseover`
-renders a second attribute whatever is done to its value. Names of letters, digits, `-`, `_`, `:`
-and `.` are kept, so `data-*`, `aria-*` and the attribute-style hooks other front-end libraries
-use still work; `on*` is refused, so a key cannot be a native event handler.
+| Constant | Behaviour |
+|---|---|
+| `MenuItem.URL_NAME` | Django URL name resolved via `reverse()` (default) |
+| `MenuItem.HREF` | Raw URL string |
+| `MenuItem.AJAX_GET_URL_NAME` | URL name loaded via AJAX GET |
+| `MenuItem.AJAX_BUTTON` | Submits an AJAX button (ajax-advanced-helpers) |
+| `MenuItem.JAVASCRIPT` | Executes a JavaScript expression |
+| `MenuItem.AJAX_COMMAND` | Sends an ajax_helpers command dict |
 
-The guarantee is structural rather than total: a name cannot become *markup* — it cannot close its
-own attribute, open a second one, or end the tag. It is not a promise that a name is inert in your
-page. `x-on:click`, `@click`, `v-on:` and `hx-on:` are well-formed names that execute under some
-front-end framework, and this library cannot know which you load. Attribute names should come from
-your own code, not from user input; if they do not, this is not the place to fix it.
+```python
+# Raw URL
+MenuItem('/some/path/', 'External', MenuItem.HREF)
 
-`button_defaults` is unaffected: which item picks up which default is exactly what it was. The
-lookup is `MenuItem.default_key`, which is the label as `display()` rendered it **before** it
-escaped, so a default keyed `R&D` still matches an item labelled `R&D`; `MenuItem.name` stays the
-thing the template prints, and is escaped.
+# JavaScript
+MenuItem("alert('hello')", 'Alert', MenuItem.JAVASCRIPT)
 
-`MenuItemDisplay.default_key()` is what answers, and a subclass with its own `display()` needs to
-do nothing: that renderer still decides its key, exactly as it did when the lookup went through
-`display()` directly. Override `default_key()` only to choose a *different* key.
+# AJAX GET (loads content without full page reload)
+MenuItem('my_view', 'Load Content', MenuItem.AJAX_GET_URL_NAME)
 
-That is a compatibility contract rather than a tidy one, and it has a sharp edge worth knowing:
-when the item carries its own `font_awesome`, the key includes the generated `<i ...></i>` just as
-it always has, so a plain-label key does not match such an item. Key a default on the label alone
-and give the icon in the default itself.
+# URL with args
+MenuItem('profile', 'Profile', url_args=[user.pk])
+MenuItem('profile', 'Profile', url_kwargs={'pk': user.pk})
+# Shorthand: keyword args prefixed with url_ become URL kwargs
+MenuItem('profile', 'Profile', url_pk=user.pk)
+```
 
-### Repeat clicks on menu links
+`AjaxButtonMenuItem` is a convenience class for posting an ajax-helpers button without writing the JavaScript yourself:
+
+```python
+from django_menus.menu import AjaxButtonMenuItem
+
+menu.add_items(AjaxButtonMenuItem('refresh', 'Refresh'))   # posts {"button": "refresh"}
+```
+
+## MenuItemDisplay
+
+Controls display properties — text, icon, CSS classes, tooltip, and HTML attributes:
+
+```python
+from django_menus.menu import MenuItemDisplay
+
+# Keyword form
+MenuItemDisplay(text='Save', font_awesome='fas fa-save', css_classes='btn-primary', tooltip='Save record')
+
+# Tuple shorthand (text, icon, css_classes, tooltip, attributes)
+MenuItem('save_view', ('Save', 'fas fa-save', 'btn-primary'))
+
+# On a view class — auto-picked up when the URL is resolved
+class MyView(TemplateView):
+    menu_display = MenuItemDisplay('My View', 'fas fa-star', 'btn-success')
+```
+
+## Dropdowns
+
+Pass a `dropdown` tuple to any `MenuItem`:
+
+```python
+from django_menus.menu import DividerItem, HeaderItem
+
+menu.add_items(
+    MenuItem(menu_display='Actions', dropdown=(
+        HeaderItem('Record'),
+        'edit_view',
+        'delete_view',
+        DividerItem(),
+        'archive_view',
+    )),
+)
+```
+
+`HeaderItem` renders a non-clickable section header (`dropdown-header`); `DividerItem` a separator line. Options: `show_caret=False` hides the caret; `no_hover=True` requires a click to open.
+
+Once a dropdown's button is wired up it carries a `data-django-menus-bound` attribute. The handlers are plain event listeners, which nothing in the page can list, so code that must wait for a menu to be live (a Playwright helper, say) waits for that attribute. A click-opened menu closes when focus leaves both its button and the menu, but not when focus moves from one to the other, so it can be opened and used from the keyboard.
+
+### AJAX-loaded dropdowns
+
+`AjaxMenuDropDownItem` renders a button whose dropdown contents are fetched from the server when clicked — useful when the items are expensive to build or depend on live data. The click posts `{"ajax": "<dropdown_view_name>"}` (default `'dropdown_menu'`) to the current view, which responds with `add_ajax_dropdown_menu`:
+
+```python
+from django_menus.menu import AjaxMenuDropDownItem
+
+class MyView(AjaxMenuTemplateView):
+    def setup_menu(self):
+        self.add_menu('menu_items', 'button_group').add_items(
+            AjaxMenuDropDownItem(menu_display='Options', css_classes='btn-success'))
+
+    def ajax_dropdown_menu(self, *args, pos, **kwargs):
+        return self.add_ajax_dropdown_menu('view1', 'view2', ('view4', 'View 4'), pos=pos)
+```
+
+An optional `value=` on the item is passed through to the handler, so one handler can serve several buttons.
+
+## Context Menus
+
+`ContextMenuMixin` attaches a right-click menu to any element matching `context_menu_selector` (default `'.context_menu'`). The right-click posts `{"ajax": "context_menu"}` to the view, which builds the menu on demand:
+
+```python
+from django_menus.menu import ContextMenuMixin, AjaxMenuTemplateView, HeaderItem, MenuItem
+
+class MyView(ContextMenuMixin, AjaxMenuTemplateView):
+    template_name = 'my_template.html'
+
+    def ajax_context_menu(self, *args, **kwargs):
+        return self.add_context_menu(
+            HeaderItem('Actions'),
+            'view1', 'view2',
+            ('test_button', 'Send to View', MenuItem.AJAX_BUTTON),
+        )
+```
+
+```html
+<div class="context_menu" id="area_one">Right click me</div>
+
+<!-- Per-element handler override: posts {"ajax": "special_context_menu"} instead -->
+<div class="context_menu" id="area_two" data-ajax="special_context_menu">Right click me</div>
+```
+
+The clicked element's `id` is available in the handler kwargs, so the menu can vary per row/area. The view must include ajax-advanced-helpers handling (e.g. `AjaxMenuTemplateView`).
+
+## Badges
+
+Attach a `MenuItemBadge` to any `MenuItem`:
+
+```python
+from django_menus.menu import MenuItemBadge
+
+def my_badge_fn(badge):
+    badge.text = MyModel.objects.filter(unread=True).count()
+    badge.css_class = 'danger'   # Bootstrap colour name
+
+MenuItem('inbox', 'Inbox', badge=MenuItemBadge('inbox-badge', my_badge_fn))
+```
+
+The badge is rendered inside a `<span id="inbox-badge">` so it can be refreshed via AJAX without a page reload. Use `AjaxMenuTemplateView.timer_menu()` to poll for updates.
+
+## Keyboard Shortcuts
+
+```python
+# Single key
+MenuItem('save_view', 'Save', key='alt-s')
+
+# Multiple bindings
+MenuItem('save_view', 'Save', key=['alt-s', 'shift-S'])
+```
+
+Supported modifiers: `alt-`, `shift-`. The key name is case-sensitive (e.g. `'F2'` for the function key).
+
+Shortcuts from every menu on the page — including menus loaded later via AJAX — are merged into a single document-level listener, so multiple menus can define keys without clobbering each other. Shortcuts are suppressed while a django-modals dialog is open.
+
+## Repeat Clicks on Menu Links
 
 Every menu item renders as an `<a href>`, and a menu item can point at a view that *does*
 something rather than one that just shows a page. A double-click sends the URL twice, and a view
@@ -197,6 +372,38 @@ download, a `target="_blank"` - cannot leave a link looking permanently dead.
 This is defence in depth, not a substitute for making such a view idempotent - the back button, a
 refresh and a second tab all still send the request twice.
 
+## Permissions
+
+### `view_permission`
+
+Define a classmethod on a view to control whether the menu item pointing to that view is visible:
+
+```python
+class SecretView(TemplateView):
+    @classmethod
+    def view_permission(cls, request, menu_item):
+        return request.user.is_staff
+```
+
+### `menu_permissions`
+
+Define on a view to control non-URL-resolved items (e.g. AJAX buttons) while that view is active:
+
+```python
+class MyView(TemplateView):
+    @classmethod
+    def menu_permissions(cls, request, menu_item):
+        return request.user.has_perm('myapp.can_edit')
+```
+
+### Callable `visible`
+
+`visible` accepts a callable taking the request, for items whose target view you do not own:
+
+```python
+MenuItem('admin:index', 'Admin', visible=lambda request: request.user.is_staff)
+```
+
 ### Permission hooks
 
 `MenuItem.test_visible` asks the views involved whether an item may be shown:
@@ -216,98 +423,308 @@ otherwise its url name without any `,args`, or for an `AjaxButtonMenuItem` its b
 `AjaxButtonMenuItem` also keeps `button_name` and `button_url_name` (the view that answers it, when
 that is not the current page).
 
-## Bootstrap 4 and Bootstrap 5
+## Menu Registry
 
-Menus ships a template pack per Bootstrap version:
+A long dropdown listed in one central `setup_menu()` conflicts on every merge. The registry lets
+each view declare its own place instead, so adding a page touches only the app that owns it.
 
-    django_menus/templates/django_menus/bootstrap4/
-    django_menus/templates/django_menus/bootstrap5/
-
-Pick one in settings. Bootstrap 4 is the default:
+Declare the sections once:
 
 ```python
-DJANGO_MENUS_TEMPLATE_PACK = 'bootstrap5'
+DJANGO_MENUS_SECTIONS = {
+    'settings': {'title': 'Settings'},
+    'reports': {
+        'title': 'Reports',
+        'groups': ['sales', 'purchases', ('stock', 'Stock')],
+        'sort': 'order',
+    },
+}
 ```
 
-Each pack holds the complete set of menu templates and emits only its own version's names, so
-the rendered page carries no classes the browser will ignore, and the two packs are free to
-diverge structurally where Bootstrap 5 changed more than a name.
-
-**Serving both from one deployment.** The setting may instead be a dotted path to a callable
-taking the request and returning a pack name — a pack name never contains a dot, which is what
-tells the two apart. The example app uses that for its nav bar toggle:
+Then each view says where it belongs:
 
 ```python
-DJANGO_MENUS_TEMPLATE_PACK = 'menu_examples.context_processors.template_pack_for_request'
+from django_menus.menu import MenuEntry
+
+class ExchangeRateList(ListView):
+    menu_display = 'Exchange Rates'
+    menu_entry = MenuEntry('settings')
+
+class StockReorderReport(ListView):
+    menu_display = 'Stock Reorder'
+    menu_entry = MenuEntry('reports', 'stock')
 ```
 
-**Overriding a template.** Menus no longer ships anything at the old flat paths, and the flat
-path is tried *before* the pack. So a project that already overrides `django_menus/main_menu.html`
-in its own templates directory keeps that override, and anything it does not override falls
-through to the pack. One consequence worth knowing: an override is version-agnostic by
-definition, so it applies to both packs.
+and the central menu shrinks to a skeleton:
 
-**What a pack does not reach.** Two things, both deliberate:
+```python
+def setup_menu(self):
+    self.add_menu('main_menu').add_items(
+        'dashboard_view',
+        registry.menu_item('reports', self.request),
+        registry.menu_item('settings', self.request,
+                           MenuItem('page_info', 'Page Info', link_type=MenuItem.AJAX_BUTTON),
+                           MenuItem('admin:index', 'Admin', visible=lambda r: r.user.is_staff)),
+    )
+```
 
-- A tooltip's placement is a key in the attributes dict rather than markup, so its Bootstrap 5
-  rename lives in `django_menus/packs.py` as `PACK_ATTRIBUTES`. It is the only such entry.
-- `css_classes`, `MenuItemDisplay`, the badge `css_class` and `attributes` are passed through
-  untouched, so those are yours to spell:
+The URLConf is walked once, lazily and cached; `MenuItem`s are built per request, so
+`view_permission` and callable `visible` behave exactly as they do in a hand-written menu.
 
-  ```python
-  MenuItem('view1', 'Edit', css_classes=['btn-primary', 'me-1'])
-  ```
+### `MenuEntry`
 
-`menu_key_press.html` and `script.html` stay outside the packs — one is a keyboard handler and the
-other sets the repeat-click window, neither is Bootstrap markup.
+| Argument | Purpose |
+|---|---|
+| `section` | Key in `DJANGO_MENUS_SECTIONS`. Required. |
+| `group` | Group within a grouped section. Required for grouped sections. |
+| `url_name` | Only needed when the view is reachable under more than one url name. |
+| `url_args` / `url_kwargs` | Arguments for `reverse()`, when the url pattern takes any. |
+| `display` | Overrides `menu_display` **in this section only** — tabs and breadcrumbs keep the view's own label. |
+| `order` | Sort position, used when the section sets `sort: 'order'`. |
+| anything else | Passed to `MenuItem()` — `font_awesome`, `css_classes`, `key`, `tooltip`… |
 
-**Running the examples on either version.** The nav bar carries a `BS4 → BS5` toggle; it puts
-`?bootstrap=5` on the URL and remembers the choice in the session, so a menu can be compared on
-both without a restart. `MENUS_EXAMPLE_BOOTSTRAP=5` in the environment, or in settings, sets
-where a fresh session starts.
+Set `menu_entry` to a list to put one view in several sections. `menu_entry` is **not** inherited —
+a view is in the menu only if it declares one itself, so the archived, grouped and pk-taking
+subclasses of a listed page do not each add a duplicate item. A subclass that should appear as well
+declares a `MenuEntry` of its own.
 
-Bootstrap 4 stays the default because the rest of the stack still emits it. On the Bootstrap 5
-page the menus are correct and django-modals, show_src_code and crispy's template pack are
-not — the example app makes that visible rather than hiding it, and it is the remaining work.
+### Section options
 
-**Two settings, two paragraphs.** The template pack above is chosen by `DJANGO_MENUS_TEMPLATE_PACK`;
-the scripts a page loads are chosen by the ecosystem-wide `CSS_FRAMEWORK` that ajax-helpers reads
-(see the positioning section below). This paragraph describes Bootstrap 5 markup on a page whose
-`CSS_FRAMEWORK` is still `bootstrap4`, so ajax-helpers still loads jQuery and Popper 1. With both
-set to `bootstrap5`, ajax-helpers 1.0.1 loads neither and the menus include loads Popper 2 itself.
+| Key | Default | Meaning |
+|---|---|---|
+| `title` | capitalised section name | Label of the parent item built by `menu_item()`. |
+| `font_awesome` | — | Icon for the parent item. |
+| `groups` | none | Group names in render order. A `(name, header)` pair emits a `HeaderItem`. |
+| `sort` | `'alpha'` | `'alpha'` by display text, `'order'` by `MenuEntry(order=...)`, or `'declared'` by URLConf order. |
+| `divider` | on when grouped | Insert a `DividerItem` between groups. |
+| `default_group` | first group | Group for entries that name none. |
 
-**The one load-order requirement.** jQuery must load before Bootstrap 5, which is what
-`base.html` does. Bootstrap 5 dropped jQuery as a dependency and registers its plugin interface
-only when jQuery got there first; without it `ajax_helpers.tooltip` quietly does nothing. The
-same order keeps `window.Popper` pointing at the Popper 1 that ajax_helpers ships, which is what
-the dropdown positioning is written against — Bootstrap 5's bundle keeps its own Popper 2
-private. `django_menus.js` detects Popper 2 anyway, for a project that brings its own.
+Dividers and headers are only emitted between groups that still have visible items for this
+request, so a group hidden by permissions never leaves a stray separator behind.
 
-**One template this does not reach.** `ajax_tooltip.html` passes a Bootstrap-classed template to
-`ajax_helpers.tooltip`, and ajax_helpers 1.0.0 rewrote that function around its own `ah-`
-classes — it reads `.ah-tooltip-inner` out of whatever template it is handed. That template no
-longer matches on either Bootstrap version, independently of anything here. No example view
-exercises it. The fix is to stop passing a Bootstrap template and let ajax_helpers use its own,
-which is version-neutral; it is left alone here because it is not a Bootstrap 5 question.
+### API
 
-**Keeping the packs in step.** Two folders means a fix can land in one and not the other, and
-unlike a missing class name that is invisible on whichever version you are not looking at. So
-`menu_examples/tests/test_template_packs.py` normalises every Bootstrap 4 name in a pack4
-template to its Bootstrap 5 spelling and requires the result to equal the pack5 file exactly.
-A deliberate divergence goes in `STRUCTURAL_DIVERGENCE` with a note, which is the point at
-which someone has to think about it. It is empty today: every difference is still a rename.
+```python
+from django_menus.menu import registry
 
-## Bootstrap 4 and Bootstrap 5: positioning the dropdowns
+registry.dropdown(section, request, *extra)   # ordered list of items
+registry.menu_item(section, request, *extra)  # parent MenuItem with the dropdown attached
+registry.extra(item, group=..., order=..., sort_text=...)   # place a caller-built item
+registry.specs(section)                       # what the scan found, for diagnostics
+```
 
-Dropdown menus are positioned with Popper. Bootstrap 4 puts Popper 1 on the page as a global
-constructor, and that is what the menus have always used. Bootstrap 5 bundles Popper 2 privately
-and leaves `window.Popper` unset, so under Bootstrap 5 the default include loads `@popperjs/core`
-itself (vendored, with a jsDelivr fallback) and the script detects whichever generation it finds.
-The switch is the ecosystem-wide `CSS_FRAMEWORK` setting that ajax-helpers reads:
+`extra` items are ordinary `MenuItem`s built at the call site — use them for anything the URLConf
+cannot describe, such as an `AJAX_BUTTON` or a third-party view with no view class. They sort by
+their own display text alongside the registered items.
+
+### Checking it
+
+Mistyped sections and groups, ambiguous url names and missing url arguments are reported by
+`manage.py check` (ids `django_menus.E001`–`E007`, `W001`–`W002`) and raise `ImproperlyConfigured`
+when the registry scans.
+
+`manage.py show_menu` prints the resolved tree so ordering is inspectable without running the site:
+
+```bash
+manage.py show_menu                          # every configured section
+manage.py show_menu reports --user ian       # one section, as a given user
+manage.py show_menu --view dashboard_view    # the menus a view actually builds
+manage.py show_menu --view dashboard_view --show-hidden --format json
+```
+
+## AJAX Tab Interfaces
+
+`AjaxMenuTabs` handles a tab bar where each tab loads its content via AJAX:
+
+```python
+from django_menus.menu import AjaxMenuTabs, MenuItem
+
+class MyTabView(AjaxMenuTabs):
+    template_name = 'my_tabs.html'
+    tab_template = 'my_tab_content.html'
+
+    def setup_menu(self):
+        super().setup_menu()
+        self.add_menu('tab_menu', 'tabs').add_items(
+            ('tab1_view', 'First Tab', MenuItem.AJAX_GET_URL_NAME),
+            ('tab2_view', 'Second Tab', MenuItem.AJAX_GET_URL_NAME),
+        )
+
+    def tab_context(self, **kwargs):
+        context = super().tab_context(**kwargs)
+        context['data'] = MyModel.objects.all()
+        return context
+
+    def main_context(self, **kwargs):
+        # Only called on the initial (non-AJAX) page load
+        return {'title': 'My Tabs'}
+```
+
+- `tab_context()` is called on every request (initial and AJAX).
+- `main_context()` is called only on the initial page load.
+- `additional_content` lists extra areas to refresh on tab switch: `[(name, AjaxMenuTabs.MENU_CONTENT)]` for a menu, or `[(name, AjaxMenuTabs.TEMPLATE_CONTENT)]` for a template fragment.
+
+## Global Button Defaults
+
+Pre-configure named button styles in `settings.py` so any menu item whose display text matches the key inherits the style automatically:
+
+```python
+from django_menus.menu import MenuItemDisplay
+
+DJANGO_MENUS_BUTTON_DEFAULTS = {
+    'save':   MenuItemDisplay('Save',   'fas fa-save',   'btn-primary'),
+    'delete': MenuItemDisplay('Delete', 'fas fa-trash',  'btn-danger'),
+    'edit':   MenuItemDisplay('Edit',   'fas fa-pen',    'btn-secondary'),
+}
+```
+
+Then in any view:
+
+```python
+self.add_menu('actions', 'button_group').add_items(
+    MenuItem('save_view',   'save'),    # picks up the global style
+    MenuItem('delete_view', 'delete'),
+)
+```
+
+Individual menus can override or extend the global set with `button_defaults=`, without affecting other menus:
+
+```python
+self.add_menu('actions', 'button_group',
+              button_defaults={'save': MenuItemDisplay('Save', 'fas fa-check', 'btn-outline-primary')})
+```
+
+## Escaping
+
+**Changed in 1.0.1.** `MenuItemDisplay.display()` used to return `mark_safe(self.text)`, so every
+label reached the page as markup whether it meant to or not. A label that comes from a value — a
+project's name, a file's name, a report's name — put that value into the page unescaped, and an
+item was safe only because its caller happened to escape it.
+
+A label is now escaped unless it is marked safe, and the same goes for each attribute value
+`MenuItem.attributes()` writes (a quote in a `tooltip` could otherwise close `title=""` and start
+another attribute).
+
+Nothing changes for a label that is the app's own words. **A label that is markup says so with
+`safe=True`** (added in 1.0.2; on 1.0.1, use `mark_safe`):
+
+```python
+MenuItem(url='home', menu_display='<i class="fas fa-lock"></i> Disable', safe=True)
+MenuItemDisplay('<i class="fas fa-lock"></i> Disable', safe=True)
+
+menu.add_items(
+    ('home', '<span class="btn-info">HTML</span>', {'safe': True}),
+)
+```
+
+`safe` is off by default, and it covers the label only: the `font_awesome` class and attribute
+values such as `tooltip` are still escaped. A label already marked safe where it was made —
+`mark_safe`, `format_html`, a rendered template — is left alone as well, with or without the flag.
+
+When `menu_display` is already a `MenuItemDisplay`, it is that display's own `safe` that counts,
+the same as its own `font_awesome` and `css_classes`: `MenuItem(safe=True)` is ignored there, so
+put the flag on the display instead —
+`MenuItem(url='home', menu_display=MenuItemDisplay('<b>Edit</b>', css_classes='btn-info', safe=True))`.
+The same goes for a `button_defaults` entry: the display it puts in place has its own `safe`.
+
+Don't use `safe=True` on a label built from a value. `safe=True` says the *whole* string is
+trusted, so the value inside it would not be escaped; `format_html` escapes the value and keeps the
+markup around it:
+
+```python
+from django.utils.html import format_html
+
+MenuItem(url='home', menu_display=format_html('<img src="{}" class="avatar">', user.avatar_url))
+```
+
+An icon does not need either — pass it as `font_awesome` and the library builds the `<i>` itself:
+
+```python
+MenuItem(url='home', menu_display='Disable', font_awesome='fas fa-lock')
+```
+
+A caller that was already escaping its own label keeps working: `escape()` returns a `SafeString`,
+which `conditional_escape` leaves alone, so nothing is escaped twice.
+
+An attribute **name** is checked rather than escaped, and dropped when it is not a plain attribute
+name — escaping would not help, since a name is not quoted and a key such as `x onmouseover`
+renders a second attribute whatever is done to its value. Names of letters, digits, `-`, `_`, `:`
+and `.` are kept, so `data-*`, `aria-*` and the attribute-style hooks other front-end libraries
+use still work; `on*` is refused, so a key cannot be a native event handler.
+
+The guarantee is structural rather than total: a name cannot become *markup* — it cannot close its
+own attribute, open a second one, or end the tag. It is not a promise that a name is inert in your
+page. `x-on:click`, `@click`, `v-on:` and `hx-on:` are well-formed names that execute under some
+front-end framework, and this library cannot know which you load. Attribute names should come from
+your own code, not from user input; if they do not, this is not the place to fix it.
+
+`button_defaults` is unaffected: which item picks up which default is exactly what it was. The
+lookup is `MenuItem.default_key`, which is the label as `display()` rendered it **before** it
+escaped, so a default keyed `R&D` still matches an item labelled `R&D`; `MenuItem.name` stays the
+thing the template prints, and is escaped.
+
+`MenuItemDisplay.default_key()` is what answers, and a subclass with its own `display()` needs to
+do nothing: that renderer still decides its key, exactly as it did when the lookup went through
+`display()` directly. Override `default_key()` only to choose a *different* key.
+
+That is a compatibility contract rather than a tidy one, and it has a sharp edge worth knowing:
+when the item carries its own `font_awesome`, the key includes the generated `<i ...></i>` just as
+it always has, so a plain-label key does not match such an item. Key a default on the label alone
+and give the icon in the default itself.
+
+## Bootstrap 4 / 5
+
+Markup follows the `CSS_FRAMEWORK` setting shared with `ajax-advanced-helpers` (the same setting that decides what `{% lib_include %}` loads):
 
 ```python
 CSS_FRAMEWORK = 'bootstrap5'   # default 'bootstrap4'
 ```
 
-Nothing changes under Bootstrap 4. With no Popper on the page at all, a menu opens straight
-below its button.
+It switches navbar alignment (`ms-auto`/`me-auto`), button spacing, the context-menu caret, badge classes
+(`badge rounded-pill text-bg-<colour>`) and tooltip `data-bs-placement`. Custom menu templates receive the active class set
+as `css`, e.g. `{{ css.align_end }}`.
+
+## Template Tags
+
+```html
+{% load django_menu_tags %}
+
+{# Render a menu by name from the context variable 'menus' #}
+{% menu_content 'main_menu' %}
+
+{# Render any menu object directly #}
+{% show_menu menus.main_menu %}
+
+{# Render a single button inline — keyword args are passed to MenuItem #}
+{% display_button url='my_view' menu_display='Click me' %}
+
+{# Render a template content fragment by context variable name #}
+{% template_content 'tab_template' %}
+```
+
+## Running the Example Project
+
+```bash
+docker-compose up
+# Bootstrap 4: http://localhost:8009
+# Bootstrap 5: http://localhost:8010
+```
+
+To run it without Docker, install both
+requirements files, the second without dependencies:
+
+    pip install -r requirements.txt
+    pip install --no-deps -r requirements-no-deps.txt
+
+and run it from `django_examples` with the checkout on the path:
+
+    cd django_examples
+    PYTHONPATH=.. python manage.py migrate
+    PYTHONPATH=.. python manage.py runserver
+
+`PYTHONPATH=..` matters: django-advanced-modals depends on django-advanced-menus, so the requirements
+install a copy from PyPI as well, and without it the example runs that copy rather than your
+checkout. docker-compose sets `PYTHONPATH=/menus` for the same reason. `requirements-no-deps.txt`
+says why it is installed separately.
+
+Add `--settings=django_examples.settings_bs5` to both commands for the Bootstrap 5 variant. It only sets `CSS_FRAMEWORK = 'bootstrap5'` (and its own database); the menus' JavaScript needs neither jQuery nor Popper (dropdowns are positioned by a bundled copy of [Floating UI](https://floating-ui.com/)), so it works in both modes.

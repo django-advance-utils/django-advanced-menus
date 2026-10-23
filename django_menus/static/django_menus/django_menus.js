@@ -1,148 +1,178 @@
-// One positioner for both Popper generations. Bootstrap 4 puts Popper 1 on the page as a
-// global constructor; Bootstrap 5 bundles Popper 2 privately and leaves `window.Popper` alone,
-// so under Bootstrap 5 the include loads @popperjs/core itself (includes.py) and this finds
-// `Popper.createPopper`. With neither present the menu is dropped straight below its button,
-// which is where `.dropdown-menu.show` puts it without any positioning at all.
-//
-// Returns an object with one method, `update()`, which lays the menu out now. Call it after
-// the menu is shown: a display:none element measures 0x0, so a layout done before the menu is
-// visible has no width to work with and cannot see that it overflows the window.
-function make_menu_popper(reference, menu, placement) {
-    var reference_el = reference.jquery ? reference[0] : reference;
-    var menu_el = menu.jquery ? menu[0] : menu;
-    if (typeof Popper !== 'undefined' && typeof Popper.createPopper === 'function') {
-        var instance = Popper.createPopper(reference_el, menu_el, {placement: placement});
-        return {
-            update: function () {
-                // Popper 2's update() is asynchronous (a promise settled on the next frame), so
-                // the menu would paint once where it last was before moving. forceUpdate() lays
-                // it out synchronously, which is what Popper 1's update() did.
-                instance.forceUpdate();
-            }
-        };
+// Dropdowns are positioned by the vendored Floating UI (global FloatingUIDOM, so no clash with Bootstrap 4's Popper).
+
+var MENU_VIEWPORT_PADDING = 8;  // context menus: keep clear of the viewport edge
+var MENU_GAP = 2;
+
+// Accepts an id, an element or (for custom templates written against the jQuery version) a jQuery object.
+function menu_element(reference) {
+    if (typeof reference === 'string') {
+        return document.getElementById(reference);
     }
-    if (typeof Popper !== 'undefined') {
-        return new Popper(reference_el, menu_el, {placement: placement});
+    if (reference && reference.jquery) {
+        return reference[0];
     }
-    var at_end = placement.indexOf('end') > -1;
-    return {
-        update: function () {
-            menu_el.style.position = 'absolute';
-            menu_el.style.top = '100%';
-            menu_el.style.left = at_end ? 'auto' : '0';
-            menu_el.style.right = at_end ? '0' : 'auto';
-        }
-    };
+    return reference;
 }
 
-var dropdown_menu_function = function dropdown_menu_function(reference) {
-  var placement = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'bottom-start';
-    var menu = $('#' + reference.attr('id') + '-menu');
-    var pop;
-
-    menu.click(function () {
-        menu.removeClass('show clicked');
-    })
-
-    reference.hover(function (e) {
-        var reference = $(this);
-        var menu = $('#' + reference.attr('id') + '-menu');
-        if (reference.is(':hover')) {
-            $('.menu-system.show').removeClass('show');
-            menu.addClass('show menu-system');
-            // Positioned only once the menu is shown (see make_menu_popper), and laid out again on
-            // every show because the page can have changed since the positioner was built.
-            if (pop == undefined) {
-                pop = make_menu_popper(reference, menu, placement);
-            }
-            pop.update();
-        }
-        setTimeout(function () {
-            if (!reference.is(':hover') && !menu.is(':hover') && !menu.hasClass('clicked')) {
-                menu.removeClass('show')
-            }
-        }, e.type === 'mouseleave' ? 300 : 0);
+// Shows the menu and keeps it positioned until hide_menu; without Floating UI, Bootstrap's CSS places it.
+function show_menu(reference, menu, placement) {
+    menu.classList.add('show');
+    if (typeof FloatingUIDOM === 'undefined') {
+        return;
+    }
+    var fui = FloatingUIDOM;
+    stop_positioning(menu);
+    Object.assign(menu.style, {position: 'absolute', margin: '0', right: 'auto', bottom: 'auto'});
+    menu._menu_cleanup = fui.autoUpdate(reference, menu, function () {
+        fui.computePosition(reference, menu, {
+            placement: placement,
+            middleware: [fui.offset(MENU_GAP), fui.flip(), fui.shift()]
+        }).then(function (pos) {
+            menu.style.left = pos.x + 'px';
+            menu.style.top = pos.y + 'px';
+        });
     });
+}
 
-    menu.hover(function (e) {
-        setTimeout(function () {
-            if (!reference.is(':hover') && !menu.is(':hover') && !menu.hasClass('clicked')) {
-                menu.removeClass('show')
-            }
-        }, e.type === 'mouseleave' ? 300 : 0);
-    });
+function stop_positioning(menu) {
+    if (menu._menu_cleanup) {
+        menu._menu_cleanup();
+        menu._menu_cleanup = null;
+    }
+}
 
-    reference.click(function () {
-        if (menu.hasClass('clicked')) {
-            menu.removeClass('show clicked');
-        } else {
-            menu.addClass('show clicked');
-        }
-    });
+function hide_menu(menu) {
+    menu.classList.remove('show', 'clicked');
+    stop_positioning(menu);
+}
 
-    reference.focusout(function () {
-        if (menu.hasClass('clicked') &&  !menu.is(':hover')) {
-            menu.removeClass('show clicked');
+function is_hovered(el) {
+    return el.matches(':hover');
+}
+
+// Click-opened menus also close on an outside click or Escape: Safari never fires focusout on a clicked link.
+function close_clicked_menus(except) {
+    document.querySelectorAll('.dropdown-menu.clicked').forEach(function (menu) {
+        if (menu !== except) {
+            hide_menu(menu);
         }
     });
-};
+}
 
-// A click-opened menu closes when another opens, when the page is clicked anywhere outside it, and
-// on Escape. Not only on the button losing focus: Safari never focuses a link or button that is
-// clicked, so there focusout never fires, and every menu opened stayed open -- the next row's
-// menu opened on top of the last, which then covered the button below it.
-var close_clicked_menus = function close_clicked_menus(except) {
-    $('.dropdown-menu.clicked').not(except || $()).removeClass('show clicked');
-};
-
-$(document).on('click.dropdown_menu_click', function (e) {
-    $('.dropdown-menu.clicked').each(function () {
-        var menu = $(this);
-        var reference = $('#' + menu.attr('id').replace(/-menu$/, ''));
-        var inside = menu.is(e.target) || menu.has(e.target).length ||
-            reference.is(e.target) || reference.has(e.target).length;
-        if (!inside) {
-            menu.removeClass('show clicked');
+document.addEventListener('click', function (e) {
+    document.querySelectorAll('.dropdown-menu.clicked').forEach(function (menu) {
+        var reference = document.getElementById(menu.id.replace(/-menu$/, ''));
+        if (!menu.contains(e.target) && !(reference && reference.contains(e.target))) {
+            hide_menu(menu);
         }
     });
-}).on('keydown.dropdown_menu_click', function (e) {
+});
+
+document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
         close_clicked_menus();
     }
 });
 
-var dropdown_menu_click = function dropdown_menu_click(reference) {
-  var placement = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'bottom-start';
-    var menu = $('#' + reference.attr('id') + '-menu');
-    var pop;
-
-    menu.click(function () {
-        if (menu.hasClass('clicked')) {
-            menu.removeClass('show clicked')
+// A click-opened menu closes when focus leaves its button - but not when focus has only moved between
+// the button and the menu itself. The menu is rendered after the bar rather than inside the button, so
+// handing focus into it from the keyboard is a focusout on the button, and closing then made a
+// click-opened menu impossible to reach without a mouse. relatedTarget is null when focus goes nowhere
+// in the page (or the browser does not say), which is read as leaving.
+function close_on_focus_leaving(reference, menu) {
+    function on_focusout(e) {
+        var next = e.relatedTarget;
+        if (next && (menu.contains(next) || reference.contains(next))) {
+            return;
         }
-    })
-
-    reference.click(function () {
-        if (menu.hasClass('clicked')) {
-            menu.removeClass('show clicked')
-        } else {
-            close_clicked_menus(menu)
-            menu.addClass('show clicked')
-            // Positioned only once the menu is shown (see make_menu_popper), and laid out again on
-            // every reopen because the page can have changed since the positioner was built.
-            if (pop == undefined) {
-                pop = make_menu_popper(reference, menu, placement)
-            }
-            pop.update()
+        if (menu.classList.contains('clicked') && !is_hovered(menu)) {
+            hide_menu(menu);
         }
-    })
-
-    reference.focusout(function () {
-        if (menu.hasClass('clicked') &&  !menu.is(':hover')) {
-                menu.removeClass('show clicked')
-            }
-    })
+    }
+    reference.addEventListener('focusout', on_focusout);
+    menu.addEventListener('focusout', on_focusout);
 }
+
+// Says on the button that its handlers are attached. The handlers are plain listeners, which nothing
+// in the page can list, and a button can be in the DOM before the inline script that wires it has run -
+// so a test, or any code that has to wait for a menu to be live, waits for this attribute instead.
+function mark_bound(reference) {
+    reference.setAttribute('data-django-menus-bound', '');
+}
+
+var dropdown_menu_function = function dropdown_menu_function(reference) {
+    var placement = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'bottom-start';
+    reference = menu_element(reference);
+    var menu = document.getElementById(reference.id + '-menu');
+
+    function hide_later(e) {
+        setTimeout(function () {
+            if (!is_hovered(reference) && !is_hovered(menu) && !menu.classList.contains('clicked')) {
+                hide_menu(menu);
+            }
+        }, e.type === 'mouseleave' ? 300 : 0);
+    }
+
+    menu.addEventListener('click', function () {
+        hide_menu(menu);
+    });
+
+    function reference_hover(e) {
+        if (is_hovered(reference)) {
+            document.querySelectorAll('.menu-system.show').forEach(function (el) {
+                if (el !== menu) {
+                    hide_menu(el);
+                }
+            });
+            menu.classList.add('menu-system');
+            show_menu(reference, menu, placement);
+        }
+        hide_later(e);
+    }
+
+    reference.addEventListener('mouseenter', reference_hover);
+    reference.addEventListener('mouseleave', reference_hover);
+    menu.addEventListener('mouseenter', hide_later);
+    menu.addEventListener('mouseleave', hide_later);
+
+    reference.addEventListener('click', function () {
+        if (menu.classList.contains('clicked')) {
+            hide_menu(menu);
+        } else {
+            close_clicked_menus(menu);
+            menu.classList.add('clicked');
+            show_menu(reference, menu, placement);
+        }
+    });
+
+    close_on_focus_leaving(reference, menu);
+    mark_bound(reference);
+};
+
+var dropdown_menu_click = function dropdown_menu_click(reference) {
+    var placement = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'bottom-start';
+    reference = menu_element(reference);
+    var menu = document.getElementById(reference.id + '-menu');
+
+    menu.addEventListener('click', function () {
+        if (menu.classList.contains('clicked')) {
+            hide_menu(menu);
+        }
+    });
+
+    reference.addEventListener('click', function () {
+        if (menu.classList.contains('clicked')) {
+            hide_menu(menu);
+        } else {
+            close_clicked_menus(menu);
+            menu.classList.add('clicked');
+            show_menu(reference, menu, placement);
+        }
+    });
+
+    close_on_focus_leaving(reference, menu);
+    mark_bound(reference);
+};
 
 
 function click_href(href) {
@@ -156,49 +186,82 @@ function click_href(href) {
 
 
 ajax_helpers.command_functions.enable_context_menu = function (command) {
-    $(document).on("contextmenu", command.selector, function (evt) {
+    // Delegated, so elements added after page load get the menu too.
+    document.addEventListener('contextmenu', function (evt) {
+        var el = evt.target.closest ? evt.target.closest(command.selector) : null;
+        if (!el) {
+            return;
+        }
         evt.preventDefault();
 
         // Create a dictionary (object) to store data attributes and id
         var elementData = {'ajax': 'context_menu', 'pos': [evt.pageX, evt.pageY]};
-        elementData['id'] = $(this).attr('id');
+        elementData['id'] = el.id;
 
         // Get all data attributes and add them to the dictionary
-        $.each(this.dataset, function (key, value) {
-            elementData[key] = value;
-        });
-        ajax_helpers.event = evt
+        Object.assign(elementData, el.dataset);
+        ajax_helpers.event = evt;
         ajax_helpers.post_json({'data': elementData});
+    });
+};
+
+
+// Replaces #context-menu (or appends to body) with html. Scripts are re-created because innerHTML does not
+// run them, and nested dropdowns in the menu html set themselves up with a <script>.
+function insert_context_menu(html) {
+    var old = document.getElementById('context-menu');
+    var tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    var nodes = Array.prototype.slice.call(tmp.childNodes);
+    nodes.forEach(function (node) {
+        if (old) {
+            old.parentNode.insertBefore(node, old);
+        } else {
+            document.body.appendChild(node);
+        }
+    });
+    if (old) {
+        old.remove();
+    }
+    nodes.forEach(function (node) {
+        if (node.nodeType !== 1) {
+            return;
+        }
+        var scripts = node.tagName === 'SCRIPT' ? [node] : Array.prototype.slice.call(node.querySelectorAll('script'));
+        scripts.forEach(function (script) {
+            var fresh = document.createElement('script');
+            fresh.text = script.textContent;
+            script.parentNode.replaceChild(fresh, script);
+        });
     });
 }
 
 
+var context_menu_outside_click;
+
 ajax_helpers.command_functions.context_menu = function (command) {
-    if ($("#context-menu").length) {
-        $("#context-menu").replaceWith(command.menu);
-    } else {
-        $("body").append(command.menu);
-    }
-    var menu = $('#context-menu');
+    insert_context_menu(command.menu);
+    var menu = document.getElementById('context-menu');
 
     // Ensure the menu is valid before proceeding
-    if (!menu.length) {
+    if (!menu) {
         console.error('Dropdown menu not found');
         return;
     }
 
     // Get the viewport bounds in document coordinates. Context-menu events already
     // provide page coordinates, and AJAX dropdowns send document coordinates below.
-    var windowWidth = $(window).width();
-    var windowHeight = $(window).height();
-    var viewportLeft = $(window).scrollLeft();
-    var viewportTop = $(window).scrollTop();
+    var windowWidth = document.documentElement.clientWidth;
+    var windowHeight = document.documentElement.clientHeight;
+    var viewportLeft = window.scrollX;
+    var viewportTop = window.scrollY;
     var viewportRight = viewportLeft + windowWidth;
     var viewportBottom = viewportTop + windowHeight;
 
-    // Get the menu dimensions
-    var menuWidth = menu.outerWidth();
-    var menuHeight = menu.outerHeight();
+    // Measure while displayed; a hidden menu has no size.
+    menu.style.display = 'block';
+    var menuWidth = menu.offsetWidth;
+    var menuHeight = menu.offsetHeight;
 
     // Calculate the position
     var positionX = 0;
@@ -216,13 +279,11 @@ ajax_helpers.command_functions.context_menu = function (command) {
 
     // Keep oversized menus usable rather than allowing them to extend beyond both
     // edges of the viewport.
-    var viewportPadding = 8;
+    var viewportPadding = MENU_VIEWPORT_PADDING;
     if (menuHeight > windowHeight - (viewportPadding * 2)) {
-        menu.css({
-            'max-height': (windowHeight - (viewportPadding * 2)) + 'px',
-            'overflow-y': 'auto'
-        });
-        menuHeight = menu.outerHeight();
+        menu.style.maxHeight = (windowHeight - (viewportPadding * 2)) + 'px';
+        menu.style.overflowY = 'auto';
+        menuHeight = menu.offsetHeight;
     }
 
     // Adjust position to prevent overflow on the right
@@ -244,26 +305,27 @@ ajax_helpers.command_functions.context_menu = function (command) {
     positionY = Math.max(viewportTop + viewportPadding, positionY);
 
     // Position the menu at the adjusted coordinates
-    menu.css({
-        display: 'block',
-        top: `${positionY}px`,
-        left: `${positionX}px`
-    });
+    menu.style.top = positionY + 'px';
+    menu.style.left = positionX + 'px';
 
     // Hide the menu when clicking outside of it
-    $(document).on('click.contextMenu', function (e) {
-        if (!$(e.target).closest(menu).length) {
-            menu.hide();
+    if (context_menu_outside_click) {
+        document.removeEventListener('click', context_menu_outside_click);
+    }
+    context_menu_outside_click = function (e) {
+        if (!menu.contains(e.target)) {
+            menu.style.display = 'none';
             // Remove the click event handler after hiding the menu
-            $(document).off('click.contextMenu');
+            document.removeEventListener('click', context_menu_outside_click);
+            context_menu_outside_click = null;
         }
-    });
+    };
+    document.addEventListener('click', context_menu_outside_click);
 
     // Hides the menu as soon as you clicked it
-    menu.on('click', function (e) {
-        menu.hide();
+    menu.addEventListener('click', function () {
+        menu.style.display = 'none';
     });
-
 };
 
 function get_ajax_dropdown_menu(button, dropdownViewName, value) {
@@ -355,20 +417,25 @@ function get_ajax_dropdown_menu(button, dropdownViewName, value) {
  * landing before this script has run all still send the request twice.
  */
 
+
 // window.* rather than a bare 0, so an assignment made above the include is not clobbered when
 // this line runs. A plain `var x = 0` would silently switch the guard back off for a project
 // that set it first, which is the one mistake the "set it anywhere" contract invites.
 var django_menus_repeat_click_ms = window.django_menus_repeat_click_ms || 0;
 
-$(document).on('click', 'a.django-menus-item', function (event) {
+document.addEventListener('click', function (event) {
+    var anchor = event.target.closest ? event.target.closest('a.django-menus-item') : null;
+    if (!anchor) {
+        return;
+    }
     // An item's own data-django-menus-repeat-ms wins over the page's window, so a single item
     // can be held where the page has the guard off, and 0 on an item opts it out where the page
-    // has it on. jQuery has already turned the attribute into a number.
-    var item_ms = $(this).data('djangoMenusRepeatMs');
+    // has it on.
+    var item_ms = anchor.getAttribute('data-django-menus-repeat-ms');
     // Number() so junk reads as off rather than as NaN comparisons that quietly never fire:
-    // 0, a negative, null and a non-numeric string all fail this. (true would read as a 1ms
-    // hold, i.e. effectively off; the Python side rejects it outright with a message.)
-    var hold_ms = Number(item_ms === undefined ? django_menus_repeat_click_ms : item_ms);
+    // 0, a negative and a non-numeric string all fail this. (true would read as a 1ms hold,
+    // i.e. effectively off; the Python side rejects it outright with a message.)
+    var hold_ms = Number(item_ms === null ? django_menus_repeat_click_ms : item_ms);
     if (!(hold_ms > 0)) {
         return;
     }
@@ -379,29 +446,25 @@ $(document).on('click', 'a.django-menus-item', function (event) {
     // returning false, an element-bound handler. Nothing was started, so there is nothing to
     // swallow, and arming here would eat the NEXT click: confirm() -> Cancel, then confirm() ->
     // OK within the window, and the user's confirmed click goes nowhere.
-    if (event.isDefaultPrevented()) {
+    if (event.defaultPrevented) {
         return;
     }
     // Trimmed because a browser trims before deciding what a href means, so a scheme sitting
     // behind leading whitespace still counts as one.
-    var href = ($(this).attr('href') || '').replace(/^\s+/, '');
+    var href = (anchor.getAttribute('href') || '').replace(/^\s+/, '');
     if (!href || href.charAt(0) === '#' || href.slice(0, 11).toLowerCase() === 'javascript:') {
         return;
     }
-    // new Date().getTime() rather than Date.now(): the latter is ES5.1, and this file is served
-    // as-is to whatever the project supports (django_menus declares no legacy_js build to fall
-    // back to), so there is no reason for this to be what raises the browser floor.
     var now = new Date().getTime();
-    var clicked_at = $(this).data('django-menus-clicked-at');
+    var clicked_at = anchor._django_menus_clicked_at;
     if (clicked_at !== undefined && now - clicked_at < hold_ms) {
-        // preventDefault alone, deliberately. `return false` would also stop propagation, and
-        // jQuery runs directly-bound document handlers after delegated ones - so it would rob
-        // the dropdown/context-menu closers and Bootstrap's clearMenus of a click they should
-        // still see. Nothing here needs the click stopped, only the navigation.
+        // preventDefault alone, deliberately: stopping propagation as well would rob the
+        // dropdown/context-menu closers above, and Bootstrap's own, of a click they should still
+        // see. Nothing here needs the click stopped, only the navigation.
         event.preventDefault();
         return;
     }
-    $(this).data('django-menus-clicked-at', now);
+    anchor._django_menus_clicked_at = now;
 
     // Mark it while it is held, so a project can show the user something happened - which is the
     // half of this problem the swallow does not address: people double-click precisely because
@@ -416,15 +479,14 @@ $(document).on('click', 'a.django-menus-item', function (event) {
     // Cleared on a timer, because a navigation that never arrives - cancelled, a download, a
     // target="_blank" - must not leave a link looking permanently dead. In the ordinary case the
     // page is replaced long before this fires.
-    var anchor = $(this);
-    anchor.addClass('django-menus-clicked');
+    anchor.classList.add('django-menus-clicked');
     setTimeout(function () {
-        anchor.removeClass('django-menus-clicked');
+        anchor.classList.remove('django-menus-clicked');
     }, hold_ms);
 });
 
-$(window).on('pageshow', function (event) {
-    // A page restored from the back/forward cache comes back with its jQuery data intact, so a
+window.addEventListener('pageshow', function (event) {
+    // A page restored from the back/forward cache comes back with its elements intact, so a
     // link clicked just before navigating away would still be held - clicking Back and
     // immediately clicking the same item again would do nothing. A restored page is a fresh
     // start, so the timers go.
@@ -432,14 +494,17 @@ $(window).on('pageshow', function (event) {
     // Nothing can be holding a timer unless something opted in, and this is the only place the
     // guard would touch the DOM while switched off, so it checks first: with no page-level
     // window and no item carrying its own, a restore does no work here.
-    if (!event.originalEvent || !event.originalEvent.persisted) {
+    if (!event.persisted) {
         return;
     }
-    var held = $('a.django-menus-item[data-django-menus-repeat-ms]');
+    var held = document.querySelectorAll('a.django-menus-item[data-django-menus-repeat-ms]');
     if (Number(django_menus_repeat_click_ms) > 0) {
-        held = $('a.django-menus-item');
+        held = document.querySelectorAll('a.django-menus-item');
     } else if (!held.length) {
         return;
     }
-    held.removeData('django-menus-clicked-at').removeClass('django-menus-clicked');
+    Array.prototype.forEach.call(held, function (anchor) {
+        anchor._django_menus_clicked_at = undefined;
+        anchor.classList.remove('django-menus-clicked');
+    });
 });

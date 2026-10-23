@@ -8,7 +8,7 @@ from django.urls import reverse, resolve, Resolver404
 from django.utils.html import conditional_escape, format_html
 from django.utils.safestring import mark_safe
 
-from django_menus.packs import pack_attribute, render_pack_template
+from .. import css_framework
 
 
 REPEAT_CLICK_ATTRIBUTE = 'data-django-menus-repeat-ms'
@@ -35,16 +35,13 @@ class MenuItemBadge:
         self.text = text
         self.css_class = css_class
         self.format_function = format_function
-        # Set when the badge is read off its item, so the pack can be resolved for the
-        # request the menu is rendering for. A badge built and rendered on its own falls
-        # back to the configured default.
-        self.request = None
 
     def badge_html(self):
         if self.format_function:
             self.format_function(self)
         if self.text:
-            return mark_safe(render_pack_template('badge.html', {'badge': self}, self.request))
+            return format_html('&nbsp;<sup><span class="{}">{}</span></sup>',
+                               css_framework.css_classes().badge(self.css_class), self.text)
         return ''
 
     def __str__(self):
@@ -74,16 +71,20 @@ class BaseMenuItem:
     def badge(self):
         if self._badge is None:
             return ''
-        # The badge renders through the pack, so it needs the menu's request to know which.
-        self._badge.request = getattr(self._menu, 'request', None)
         return self._badge
 
     @property
     def has_badge(self):
-        if self._badge is not None:
-            return True
+        return self._badge is not None
+
+    def resolve_visible(self, request):
+        """Replace a callable ``visible`` with the bool it returns for this request."""
+        if callable(self.visible):
+            self.visible = bool(self.visible(request))
+        return self.visible
 
     def test_visible(self, request):
+        self.resolve_visible(request)
         return True
 
 
@@ -103,8 +104,9 @@ class DividerItem(BaseMenuItem):
 
     default_render = False
 
-    def render(self):
-        return mark_safe(render_pack_template('divider.html', {}, getattr(self.menu, 'request', None)))
+    @staticmethod
+    def render():
+        return mark_safe('<div class="dropdown-divider"></div>')
 
 
 class HeaderItem(BaseMenuItem):
@@ -115,8 +117,7 @@ class HeaderItem(BaseMenuItem):
         super().__init__(**kwargs)
 
     def render(self):
-        return mark_safe(render_pack_template(
-            'header.html', {'text': self.text}, getattr(self.menu, 'request', None)))
+        return format_html('<div class="dropdown-header">{}</div>', self.text)
 
 
 #: A plain attribute name: a letter, `_` or `:` to start, then letters, digits, `-`, `_`, `:` or
@@ -249,7 +250,7 @@ class MenuItem(BaseMenuItem):
                              HREF]
 
     def test_visible(self, request):
-        if self.visible:
+        if self.resolve_visible(request):
             if self.link_type in self.RESOLVABLE_LINK_TYPES and self.resolved_url != 'invalid':
                 view_class = getattr(self.resolved_url.func, 'view_class', None)
                 if hasattr(view_class, 'view_permission'):
@@ -309,13 +310,10 @@ class MenuItem(BaseMenuItem):
         # a tooltip adds three keys, a repeat-click window adds one - so keeping the caller's
         # dict meant an `attributes=` dict shared between items, or held at module level, picked
         # those up and passed them to every other item using it, for the life of the process.
-        # Only the version-neutral half of the tooltip is added here: this runs in __init__,
-        # before the item is attached to a menu, so there is no request yet and no way to know
-        # the pack. The placement attribute, whose name Bootstrap 5 changed, is added in
-        # attributes() below, which does run at render time.
         attributes = {} if attributes is None else dict(attributes)
         if tooltip:
-            attributes.update({'title': tooltip, 'data-tooltip': 'tooltip'})
+            attributes.update({'title': tooltip, 'data-tooltip': 'tooltip',
+                               css_framework.css_classes().data_prefix + 'placement': 'bottom'})
         return attributes
 
     def __init__(self, url=None, menu_display=None, link_type=URL_NAME, css_classes=None, template=None,
@@ -396,9 +394,6 @@ class MenuItem(BaseMenuItem):
                 attributes.update(self.external_function(self.menu_config['attributes']))
         attributes.update(self._attributes)
         attributes.update(self.menu_display.attributes())
-        if 'data-tooltip' in attributes:
-            request = getattr(self.menu, 'request', None)
-            attributes[pack_attribute('placement', request)] = 'bottom'
         self.add_accessible_name(attributes)
         if attributes:
             # A value is written inside double quotes, so it is escaped unless it is marked safe
@@ -501,12 +496,10 @@ class MenuItem(BaseMenuItem):
 
     def render(self):
         if self.template is None:
-            self.template = 'single_button.html'
-        context = dict(**{'menu_item': self}, **self.kwargs)
-        # Same rule as HtmlMenu.templates: a bare filename is resolved against the pack, a
-        # path is one the caller supplied and is used exactly as given.
-        if '/' not in self.template:
-            return render_pack_template(self.template, context, getattr(self.menu, 'request', None))
+            self.template = 'django_menus/single_button.html'
+        context = {'menu_item': self, 'css': css_framework.css_classes(),
+                   'tooltip_template': mark_safe(css_framework.tooltip_template(self.kwargs.get('tooltip_class')))}
+        context.update(self.kwargs)
         return render_to_string(self.template, context)
 
     @staticmethod
