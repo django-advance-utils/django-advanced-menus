@@ -113,11 +113,11 @@ class VisibilityTests(TestCase):
         self.assertEqual(render_menu(menu), '')
 
     def test_empty_dropdown_hides_parent(self):
-        # An item whose dropdown renders empty is hidden (menu.py:87-88), but `no_items` has
-        # already been cleared by then, so the empty container is still emitted.
+        # An item whose dropdown renders empty is hidden, and with nothing else to show the
+        # menu renders nothing at all - no empty container left behind.
         item = MenuItem(menu_display='Hidden', dropdown=('staff_only',))
         menu = HtmlMenu(make_request()).add_items(item)
-        self.assertEqual(render_menu(menu), NAV + '</ul>')
+        self.assertEqual(render_menu(menu), '')
         self.assertFalse(item.visible)
 
 
