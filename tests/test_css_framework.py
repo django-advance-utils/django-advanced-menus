@@ -4,6 +4,7 @@ The Bootstrap 4 output is pinned byte-for-byte in test_regression; these tests c
 """
 from django.core.exceptions import ImproperlyConfigured
 from django.test import TestCase, override_settings
+from django.utils.html import escapejs
 
 from django_menus import css_framework
 from django_menus.menu import HtmlMenu, MenuItem, MenuItemBadge
@@ -93,10 +94,24 @@ class FrameworkSettingTests(TestCase):
 class TooltipTemplateTests(TestCase):
 
     def test_template_follows_ajax_helpers_version(self):
+        markup = css_framework.tooltip_template('wide')
+        if css_framework.AH_TOOLTIPS:
+            self.assertEqual(markup[:57], '<div class="ah-tooltip wide" role="tooltip"><div class="a')
+        else:
+            self.assertEqual(markup[:54], '<div class="tooltip wide" role="tooltip"><div class="ar')
+
+    def test_the_rendered_fragment_is_a_javascript_string(self):
         html = MenuItem('about', template='django_menus/ajax_tooltip.html', tooltip_name='about',
                         tooltip_class='wide').render()
-        if css_framework.AH_TOOLTIPS:
-            self.assertIn('<div class="ah-tooltip wide" role="tooltip"><div class="ah-arrow">', html)
-        else:
-            self.assertIn('<div class="tooltip wide" role="tooltip"><div class="arrow">', html)
-        self.assertNotIn('&lt;', html)
+        self.assertIn(escapejs(css_framework.tooltip_template('wide')), html)
+
+    def test_a_tooltip_class_cannot_break_out(self):
+        nasty = "x' + alert(1) + '\"></div></script><script>alert(2)</script>"
+        markup = css_framework.tooltip_template(nasty)
+        self.assertNotIn('<script>', markup)
+        self.assertNotIn('"></div></script>', markup)
+        html = MenuItem('about', template='django_menus/ajax_tooltip.html', tooltip_name='about',
+                        tooltip_class=nasty).render()
+        script = html[html.index('<script>') + len('<script>'):html.rindex('</script>')]
+        self.assertNotIn('</script>', script)
+        self.assertNotIn("x'", script)

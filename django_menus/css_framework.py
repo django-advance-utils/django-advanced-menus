@@ -13,6 +13,7 @@ Python-built markup calls :func:`css_classes` directly.
 """
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
+from django.utils.html import conditional_escape
 
 try:
     from ajax_helpers.config import get_css_framework
@@ -73,8 +74,13 @@ def css_classes():
 
 
 def tooltip_template(tooltip_class=None):
-    """Popup markup for ``ajax_helpers.tooltip`` — follows the ajax_helpers client, not Bootstrap."""
-    extra = f' {tooltip_class}' if tooltip_class else ''
+    """Popup markup for ``ajax_helpers.tooltip`` — follows the ajax_helpers client, not Bootstrap.
+
+    The class is escaped, as it was when the template wrote it with ``{{ }}``: it goes into a
+    ``class`` attribute here, and ajax_tooltip.html then puts the whole fragment in a JavaScript
+    string, which it escapes again for that context.
+    """
+    extra = f' {conditional_escape(tooltip_class)}' if tooltip_class else ''
     if AH_TOOLTIPS:
         return (f'<div class="ah-tooltip{extra}" role="tooltip">'
                 f'<div class="ah-arrow"></div><div class="ah-tooltip-inner"></div></div>')

@@ -37,17 +37,17 @@ python -m django test tests --settings=tests.settings
 
 The `tests/` package at the repo root has its own settings module and URLConf — `django_examples.settings` cannot host tests because `menu_examples.apps.ModalConfig` (via `show_src_code.apps.PypiAppConfig`) makes a live PyPI request when the app registry is populated. `tests/` is excluded from the wheel by the `packages.find` include filter.
 
-Coverage is the menu registry plus a regression baseline pinning every `add_items` form and every menu template to its exact rendered HTML. Anything not covered there is still validated by running the example project at `django_examples/menu_examples/`.
+Coverage includes the menu registry, a regression baseline pinning every `add_items` form and every menu template to its exact rendered HTML, labels and attribute escaping, accessible names, `CSS_FRAMEWORK` switching, permission hooks, divider tidying, checks and `show_menu`. The JavaScript has no test harness here. Anything not covered there is still validated by running the example project at `django_examples/menu_examples/`.
 
 ## Architecture
 
 ### Core package: `django_menus/menu/`
 
 **`menu.py`** — The main entry points:
-- `HtmlMenu` — A menu container. Instantiate with a request and template type (`'base'`, `'tabs'`, `'button_group'`, `'breadcrumb'`, `'dropdown'`, `'buttons'`). Call `.add_item()` / `.add_items()` to populate, then `.render()` to output HTML.
+- `HtmlMenu` — A menu container. Instantiate with a request and template type (`'base'`, `'tabs'`, `'button_group'`, `'breadcrumb'`, `'dropdown'`, `'buttons'`, `'context'`). Call `.add_item()` / `.add_items()` to populate, then `.render()` to output HTML.
 - `MenuMixin` — A Django view mixin. Override `setup_menu()` and call `self.add_menu(name, template)` to attach menus to a view. Menus are injected into template context automatically. Also provides `add_ajax_dropdown_menu(*items, pos=...)` — the response handler for `AjaxMenuDropDownItem`.
 - `MenuTemplateView` — `MenuMixin` + `TemplateView` convenience class.
-- `AjaxMenuTemplateView` — `MenuTemplateView` + `django-ajax-helpers` integration; adds `timer_menu()` for badge polling.
+- `AjaxMenuTemplateView` — `MenuTemplateView` + `ajax-advanced-helpers` integration; adds `timer_menu()` for badge polling.
 - `AjaxMenuDropDownItem` — A `MenuItem` whose dropdown contents are fetched via AJAX on click; posts `{"ajax": "<dropdown_view_name>"}` (default `'dropdown_menu'`) to the current view, handled by `ajax_dropdown_menu(*args, pos, **kwargs)` returning `add_ajax_dropdown_menu(...)`.
 
 **`menu_items.py`** — Item types added to `HtmlMenu`:
@@ -75,7 +75,7 @@ Coverage is the menu registry plus a regression baseline pinning every `add_item
 
 **`management/commands/show_menu.py`** — prints the resolved menu. Registry mode lists each section and everything the scan found; `--view <url_name>` instantiates the view, calls `setup_menu()` and walks `view.menus`, which is the only way to see the top-level skeleton and the `extra` items. `--format json` makes the output assertable.
 
-**`context_menu.py`** — `ContextMenuMixin`: right-click context menus. Elements matching `context_menu_selector` (default `'.context_menu'`) post `{"ajax": "context_menu"}` on right-click, handled by `ajax_context_menu(*args, **kwargs)` returning `self.add_context_menu(*items)`. A `data-ajax="other_name"` attribute on the element routes to `ajax_other_name` instead; the element's `id` and other data attributes arrive in the handler kwargs. Requires `django-ajax-helpers` on the view (e.g. `AjaxMenuTemplateView`).
+**`context_menu.py`** — `ContextMenuMixin`: right-click context menus. Elements matching `context_menu_selector` (default `'.context_menu'`) post `{"ajax": "context_menu"}` on right-click, handled by `ajax_context_menu(*args, **kwargs)` returning `self.add_context_menu(*items)`. A `data-ajax="other_name"` attribute on the element routes to `ajax_other_name` instead; the element's `id` and other data attributes arrive in the handler kwargs. Requires `ajax-advanced-helpers` on the view (e.g. `AjaxMenuTemplateView`).
 
 ### Link types on `MenuItem`
 
@@ -90,11 +90,11 @@ Defined as constants on `MenuItem`: `HREF`, `URL_NAME`, `AJAX_GET_URL_NAME`, `AJ
 
 ### Templates: `django_menus/templates/django_menus/`
 
-One template per layout style: `main_menu.html`, `tab_menu.html`, `button_group.html`, `button_menu.html`, `breadcrumb.html`, `dropdown.html`, `single_button.html`. Override these in a project's templates directory to customise rendering.
+One template per layout style: `main_menu.html`, `tab_menu.html`, `button_group.html`, `button_menu.html`, `breadcrumb.html`, `dropdown.html`, `context_menu.html`, `single_button.html`, plus `ajax_dropdown.html` and `ajax_tooltip.html` for those items, `menu_key_press.html` (keyboard shortcuts) and `script.html` (the page's repeat-click window). Override these in a project's templates directory to customise rendering; keep the `django-menus-item` class on every anchor.
 
 ### Static assets
 
-CSS and JS live under `django_menus/static/`. Registered via `includes.py` using the `django-ajax-helpers` `SourceBase` mechanism — add `django_menus` to `INSTALLED_APPS` and run `collectstatic`.
+CSS and JS live under `django_menus/static/`. Registered via `includes.py` using the `ajax-advanced-helpers` `SourceBase` mechanism — add `django_menus` to `INSTALLED_APPS` and run `collectstatic`.
 
 ### Example project: `django_examples/`
 

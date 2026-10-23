@@ -376,7 +376,7 @@ class RepeatClickExamples(MainMenu):
             # Bumps a counter in the page rather than calling alert(). A modal dialog makes
             # the browser discard pointer input while it is open, so the second click of a
             # double-click never lands and this would appear to be held when it is not.
-            MenuItem("$('#js-clicks').text(Number($('#js-clicks').text()) + 1)",
+            MenuItem("var c = document.getElementById('js-clicks'); c.textContent = Number(c.textContent) + 1; void 0",
                      'A javascript: item',
                      link_type=MenuItem.JAVASCRIPT,
                      css_classes='btn-outline-secondary'),
