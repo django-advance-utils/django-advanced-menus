@@ -311,3 +311,14 @@ CSS_FRAMEWORK = 'bootstrap5'   # default 'bootstrap4'
 
 Nothing changes under Bootstrap 4. With no Popper on the page at all, a menu opens straight
 below its button.
+
+A submenu opened beside its entry (`placement='right-start'`, `'left-start'` and the like) is not
+positioned by Popper, which keeps a menu inside its scroll parent -- usually the whole page -- and
+so let a submenu opened near the bottom of the window run off it. It opens on the side asked for,
+or on the other side when that side has no room; with no room below, its last entry sits level
+with the entry that opened it, so it opens upwards; and a menu taller than the window scrolls.
+A context menu (`add_context_menu`, `add_ajax_dropdown_menu`) follows the same rules at the
+pointer: to its left with no room on the right, upwards from it with no room below.
+
+A submenu's own entries can open submenus of their own: give the entry a `dropdown=` as on a
+top-level one. The menus above it stay open while the pointer is on it.

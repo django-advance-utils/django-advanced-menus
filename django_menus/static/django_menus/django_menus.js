@@ -10,6 +10,16 @@
 function make_menu_popper(reference, menu, placement) {
     var reference_el = reference.jquery ? reference[0] : reference;
     var menu_el = menu.jquery ? menu[0] : menu;
+    // A submenu opened beside its entry ('right-start', 'left-start', ...) is laid out here rather
+    // than by Popper, which keeps a menu inside its scroll parent -- the whole page -- and so let a
+    // submenu opened near the bottom of the window run off it, out of reach.
+    if (/^(right|left)/.test(placement || '')) {
+        return {
+            update: function () {
+                place_menu_beside(reference_el, menu_el, placement);
+            }
+        };
+    }
     if (typeof Popper !== 'undefined' && typeof Popper.createPopper === 'function') {
         var instance = Popper.createPopper(reference_el, menu_el, {placement: placement});
         return {
@@ -35,20 +45,176 @@ function make_menu_popper(reference, menu, placement) {
     };
 }
 
+// Kept between a menu and the edge of the window.
+var django_menus_viewport_margin = 8;
+
+// The window's visible size, not counting its scroll bars.
+function django_menus_viewport() {
+    return {width: document.documentElement.clientWidth, height: document.documentElement.clientHeight};
+}
+
+// A menu taller than the window scrolls inside it rather than running off it. Measured on the menu
+// as shown, so call it after the menu is visible.
+function fit_menu_height(menu_el) {
+    menu_el.style.maxHeight = '';
+    menu_el.style.overflowY = '';
+    var room = django_menus_viewport().height - (django_menus_viewport_margin * 2);
+    if (menu_el.offsetHeight > room) {
+        menu_el.style.maxHeight = room + 'px';
+        menu_el.style.overflowY = 'auto';
+    }
+}
+
+// Puts a menu at (x, y) in window coordinates, whatever element it is positioned against.
+function set_menu_position(menu_el, x, y) {
+    var origin_x = -window.pageXOffset;
+    var origin_y = -window.pageYOffset;
+    var parent = menu_el.offsetParent;
+    if (parent && parent !== document.body && parent !== document.documentElement) {
+        var parent_rect = parent.getBoundingClientRect();
+        origin_x = parent_rect.left + parent.clientLeft - parent.scrollLeft;
+        origin_y = parent_rect.top + parent.clientTop - parent.scrollTop;
+    }
+    menu_el.style.left = (x - origin_x) + 'px';
+    menu_el.style.top = (y - origin_y) + 'px';
+}
+
+// A submenu beside the entry that opens it, kept on the screen:
+// - beside its parent menu on the side the placement asks for -- or the side the parent itself
+//   opened to, so a chain of submenus carries on the way it started rather than doubling back over
+//   the menus it came from -- or on the other side when that side has no room (a menu near the
+//   right of the window opens to the left);
+// - its first entry level with the entry, or, with no room below, its last entry level with it, so
+//   the menu opens upwards (a menu near the bottom of the window grows up from the entry);
+// - and a menu taller than the window scrolls.
+function place_menu_beside(reference_el, menu_el, placement) {
+    var margin = django_menus_viewport_margin;
+    var view = django_menus_viewport();
+    menu_el.style.position = 'absolute';
+    menu_el.style.transform = 'none';
+    menu_el.style.margin = '0';
+    menu_el.style.right = 'auto';
+    menu_el.style.bottom = 'auto';
+    fit_menu_height(menu_el);
+
+    var item = reference_el.getBoundingClientRect();
+    var parent_menu = $(reference_el).closest('.dropdown-menu')[0];
+    var beside = parent_menu ? parent_menu.getBoundingClientRect() : item;
+    var width = menu_el.offsetWidth;
+    var height = menu_el.offsetHeight;
+
+    var right_x = beside.right;
+    var left_x = beside.left - width;
+    var fits_right = right_x + width + margin <= view.width;
+    var fits_left = left_x >= margin;
+    var wanted = (parent_menu && parent_menu.getAttribute('data-django-menus-side')) ||
+        (placement.indexOf('left') === 0 ? 'left' : 'right');
+    var side;
+    if (wanted === 'left') {
+        side = (fits_left || !fits_right) ? 'left' : 'right';
+    } else {
+        side = (fits_right || !fits_left) ? 'right' : 'left';
+    }
+    menu_el.setAttribute('data-django-menus-side', side);
+    var x = side === 'left' ? left_x : right_x;
+    x = Math.max(margin, Math.min(x, view.width - width - margin));
+
+    var style = window.getComputedStyle(menu_el);
+    var above_first = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.borderTopWidth) || 0);
+    var below_last = (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0);
+    var y = item.top - above_first;
+    if (y + height + margin > view.height) {
+        y = item.bottom + below_last - height;
+    }
+    y = Math.max(margin, Math.min(y, view.height - height - margin));
+    set_menu_position(menu_el, x, y);
+}
+
+// The entry that opens a menu: '#abc' for '#abc-menu'.
+function django_menus_reference(menu) {
+    var id = $(menu).attr('id') || '';
+    return /-menu$/.test(id) ? $('#' + id.replace(/-menu$/, '')) : $();
+}
+
+// The submenus opened from a menu's own entries, open or not, and theirs in turn. They are not
+// inside it in the page -- each is drawn after the menu it belongs to -- so they are found from the
+// entries' ids.
+function django_menus_submenus(menu) {
+    var found = $();
+    $(menu).find('a[id]').each(function () {
+        if (!this.id) {
+            return;
+        }
+        var submenu = $('#' + this.id + '-menu');
+        if (submenu.length && !found.is(submenu)) {
+            found = found.add(submenu).add(django_menus_submenus(submenu));
+        }
+    });
+    return found;
+}
+
+// A menu and every menu above it: the menu holding the entry that opened it, and so on up.
+function django_menus_lineage(menu) {
+    var lineage = $();
+    menu = $(menu);
+    while (menu.length && !lineage.is(menu)) {
+        lineage = lineage.add(menu);
+        menu = django_menus_reference(menu).closest('.dropdown-menu');
+    }
+    return lineage;
+}
+
+// Whether the pointer is on a menu or on any open submenu below it.
+function django_menus_tree_hovered(menu) {
+    return $(menu).add(django_menus_submenus(menu).filter('.show')).is(':hover');
+}
+
+// Whether a click landed on an entry that opens a submenu -- which opens it, and must not close
+// the menu it is in.
+function django_menus_opens_submenu(target) {
+    var entry = $(target).closest('a[id]');
+    return entry.length > 0 && entry.attr('id') !== '' && $('#' + entry.attr('id') + '-menu').length > 0;
+}
+
+// Closes a hover menu the pointer has left -- unless it is on the entry that opened it, on the menu,
+// or on a submenu opened from it -- and its submenus with it. Then its parent, which a submenu
+// holds open, has been left too if the pointer is on neither.
+function close_left_menu(menu) {
+    menu = $(menu);
+    if (!menu.hasClass('show') || menu.hasClass('clicked')) {
+        return;
+    }
+    if (django_menus_reference(menu).is(':hover') || django_menus_tree_hovered(menu)) {
+        return;
+    }
+    menu.removeClass('show');
+    django_menus_submenus(menu).removeClass('show clicked');
+    var parent = django_menus_reference(menu).closest('.dropdown-menu.menu-system');
+    if (parent.length) {
+        close_left_menu(parent);
+    }
+}
+
 var dropdown_menu_function = function dropdown_menu_function(reference) {
   var placement = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 'bottom-start';
     var menu = $('#' + reference.attr('id') + '-menu');
     var pop;
 
-    menu.click(function () {
+    menu.click(function (e) {
+        if (django_menus_opens_submenu(e.target)) {
+            return;
+        }
+        // The entry chosen closes the menu it is in and every hover menu above it.
         menu.removeClass('show clicked');
+        django_menus_lineage(menu).filter('.menu-system').removeClass('show clicked');
     })
 
     reference.hover(function (e) {
         var reference = $(this);
         var menu = $('#' + reference.attr('id') + '-menu');
         if (reference.is(':hover')) {
-            $('.menu-system.show').removeClass('show');
+            // Every other open menu closes, but not the ones this is a submenu of.
+            $('.menu-system.show').not(django_menus_lineage(menu)).removeClass('show');
             menu.addClass('show menu-system');
             // Positioned only once the menu is shown (see make_menu_popper), and laid out again on
             // every show because the page can have changed since the positioner was built.
@@ -58,17 +224,13 @@ var dropdown_menu_function = function dropdown_menu_function(reference) {
             pop.update();
         }
         setTimeout(function () {
-            if (!reference.is(':hover') && !menu.is(':hover') && !menu.hasClass('clicked')) {
-                menu.removeClass('show')
-            }
+            close_left_menu(menu);
         }, e.type === 'mouseleave' ? 300 : 0);
     });
 
     menu.hover(function (e) {
         setTimeout(function () {
-            if (!reference.is(':hover') && !menu.is(':hover') && !menu.hasClass('clicked')) {
-                menu.removeClass('show')
-            }
+            close_left_menu(menu);
         }, e.type === 'mouseleave' ? 300 : 0);
     });
 
@@ -173,7 +335,18 @@ ajax_helpers.command_functions.enable_context_menu = function (command) {
 }
 
 
+// The submenus of the context menu now showing, removed with it when the next one is drawn.
+var context_submenus = $();
+
+function hide_context_menu(menu) {
+    $(menu).hide();
+    context_submenus.removeClass('show clicked');
+    $(document).off('click.contextMenu');
+}
+
 ajax_helpers.command_functions.context_menu = function (command) {
+    // The last menu's submenus are drawn beside it, not in it, so replacing it leaves them behind.
+    context_submenus.remove();
     if ($("#context-menu").length) {
         $("#context-menu").replaceWith(command.menu);
     } else {
@@ -186,17 +359,23 @@ ajax_helpers.command_functions.context_menu = function (command) {
         console.error('Dropdown menu not found');
         return;
     }
+    context_submenus = django_menus_submenus(menu);
 
     // Get the viewport bounds in document coordinates. Context-menu events already
     // provide page coordinates, and AJAX dropdowns send document coordinates below.
-    var windowWidth = $(window).width();
-    var windowHeight = $(window).height();
+    var windowWidth = django_menus_viewport().width;
+    var windowHeight = django_menus_viewport().height;
     var viewportLeft = $(window).scrollLeft();
     var viewportTop = $(window).scrollTop();
     var viewportRight = viewportLeft + windowWidth;
     var viewportBottom = viewportTop + windowHeight;
+    var viewportPadding = django_menus_viewport_margin;
 
-    // Get the menu dimensions
+    // Shown before it is measured, but not seen until it is in place.
+    menu.css({display: 'block', visibility: 'hidden', top: 0, left: 0});
+
+    // A menu taller than the window scrolls inside it.
+    fit_menu_height(menu[0]);
     var menuWidth = menu.outerWidth();
     var menuHeight = menu.outerHeight();
 
@@ -214,29 +393,27 @@ ajax_helpers.command_functions.context_menu = function (command) {
         anchorTop = command.pos[2];
     }
 
-    // Keep oversized menus usable rather than allowing them to extend beyond both
-    // edges of the viewport.
-    var viewportPadding = 8;
-    if (menuHeight > windowHeight - (viewportPadding * 2)) {
-        menu.css({
-            'max-height': (windowHeight - (viewportPadding * 2)) + 'px',
-            'overflow-y': 'auto'
-        });
-        menuHeight = menu.outerHeight();
-    }
-
-    // Adjust position to prevent overflow on the right
+    // With no room to the right, a menu opened at the pointer opens to its left, and an AJAX
+    // dropdown's moves left until it fits.
+    // Its submenus open on the side it did (see place_menu_beside).
+    menu.removeAttr('data-django-menus-side');
     if (positionX + menuWidth + viewportPadding > viewportRight) {
-        positionX = viewportRight - menuWidth - viewportPadding;
+        if (anchorTop === undefined && positionX - menuWidth >= viewportLeft + viewportPadding) {
+            positionX = positionX - menuWidth;
+            menu.attr('data-django-menus-side', 'left');
+        } else {
+            positionX = viewportRight - menuWidth - viewportPadding;
+        }
     }
     positionX = Math.max(viewportLeft + viewportPadding, positionX);
 
-    // AJAX dropdowns include the top of their anchor button. Flip those menus
-    // directly above the button when they do not fit below it; pointer context
-    // menus retain the existing viewport-edge fallback.
+    // With no room below, a menu opens upwards: an AJAX dropdown directly above its button (the
+    // top of which it is sent), a menu opened at the pointer with its bottom at the pointer. Where
+    // there is no room above either, it sits as low as the window allows.
     if (positionY + menuHeight + viewportPadding > viewportBottom) {
-        if (anchorTop !== undefined && anchorTop - menuHeight - viewportPadding >= viewportTop) {
-            positionY = anchorTop - menuHeight;
+        var above = anchorTop !== undefined ? anchorTop : positionY;
+        if (above - menuHeight - viewportPadding >= viewportTop) {
+            positionY = above - menuHeight;
         } else {
             positionY = viewportBottom - menuHeight - viewportPadding;
         }
@@ -245,23 +422,24 @@ ajax_helpers.command_functions.context_menu = function (command) {
 
     // Position the menu at the adjusted coordinates
     menu.css({
-        display: 'block',
+        visibility: '',
         top: `${positionY}px`,
         left: `${positionX}px`
     });
 
-    // Hide the menu when clicking outside of it
-    $(document).on('click.contextMenu', function (e) {
-        if (!$(e.target).closest(menu).length) {
-            menu.hide();
-            // Remove the click event handler after hiding the menu
-            $(document).off('click.contextMenu');
+    // Hide the menu when clicking outside of it -- in the page, or on an entry of one of its
+    // submenus, which are drawn outside it -- but not on an entry that opens a submenu.
+    $(document).off('click.contextMenu').on('click.contextMenu', function (e) {
+        if (!$(e.target).closest(menu).length && !django_menus_opens_submenu(e.target)) {
+            hide_context_menu(menu);
         }
     });
 
     // Hides the menu as soon as you clicked it
     menu.on('click', function (e) {
-        menu.hide();
+        if (!django_menus_opens_submenu(e.target)) {
+            hide_context_menu(menu);
+        }
     });
 
 };
