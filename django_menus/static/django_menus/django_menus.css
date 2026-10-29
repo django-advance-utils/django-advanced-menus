@@ -12,3 +12,11 @@
         position: absolute;
 }
 
+
+/* A menu held to the window scrolls inside it (see show_menu). Without this, scrolling on past its
+   first or last entry hands the scroll to the page, which moves the menus with it. It has no effect
+   on a menu short enough not to scroll, and only menus' own templates carry the class, so a page's
+   other Bootstrap dropdowns are left alone. */
+.django-menus-dropdown {
+        overscroll-behavior: contain;
+}

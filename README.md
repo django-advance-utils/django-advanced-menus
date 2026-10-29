@@ -16,7 +16,7 @@ does. It depends on [ajax-advanced-helpers](https://github.com/django-advance-ut
 pip install django-advanced-menus
 ```
 
-Needs Python 3.11 or later; it is tested on Django 5.2 and 6.0. 2.0.0 was the last release to support Python 3.9 and 3.10.
+Needs Python 3.11 or later; it is tested on Django 5.2 and 6.0. On Python 3.9 or 3.10, pip installs 1.0.4, the last 1.x release.
 
 Add to `INSTALLED_APPS`:
 
@@ -27,13 +27,13 @@ INSTALLED_APPS = [
 ]
 ```
 
-### Upgrading to 2.0 from django-advanced-menus 1.0.x
+### Upgrading to 2.x from django-advanced-menus 1.0.x
 
 - The menu JavaScript no longer needs jQuery or Popper. Dropdowns are positioned by a bundled copy of Floating UI, which `{% lib_include module='django_menus.includes' %}` loads before `django_menus.js`.
 - Bootstrap 5 is chosen by the ecosystem-wide `CSS_FRAMEWORK = 'bootstrap5'` that ajax-advanced-helpers reads; see [Bootstrap 4 / 5](#bootstrap-4--5). `DJANGO_MENUS_TEMPLATE_PACK` and the `bootstrap4/` and `bootstrap5/` template folders are gone: there is one set of templates again, at `django_menus/<name>.html`, and a project override at that path keeps working.
 - Labels and attribute values are escaped unless marked safe (since 1.0.1); see [Escaping](#escaping).
 
-- Python 3.9 or later is required (ajax-advanced-helpers already needed it).
+- Python 3.11 or later is required.
 - A dropdown button carries `data-django-menus-bound` once it is wired, for code that used to wait on jQuery's event registry; see [Dropdowns](#dropdowns).
 
 To stay on the jQuery version, pin `django-advanced-menus<2.0`.

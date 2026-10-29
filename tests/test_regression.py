@@ -136,7 +136,7 @@ class DropdownTests(TestCase):
         self.assertIn('<li id="ID1" class="nav-item" style="position: relative" >'
                       '<a class="django-menus-item nav-link " href="javascript:void(0)">'
                       '<span class="dropdown-toggle">Actions</span></a></li>', html)
-        self.assertIn('<div id=\'ID1-menu\' class="dropdown-menu" role="menu">'
+        self.assertIn('<div id=\'ID1-menu\' class="dropdown-menu django-menus-dropdown" role="menu">'
                       '<div class="dropdown-header">Record</div>'
                       '<a  class="django-menus-item dropdown-item " href="/about/" >About Us</a>'
                       '<div class="dropdown-divider"></div>'

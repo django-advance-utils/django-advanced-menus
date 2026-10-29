@@ -1,5 +1,5 @@
 {% spaceless %}
-<div id='context-menu' class="dropdown-menu" role="menu">
+<div id='context-menu' class="dropdown-menu django-menus-dropdown" role="menu">
     {% for i in menu.visible_items %}
         {% if i.default_render %}
             <a class="django-menus-item dropdown-item {{ i.css }}" id="{{ i.dropdown.id }}" href="{{ i.href }}" {{ i.attributes }}>

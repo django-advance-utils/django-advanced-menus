@@ -1,8 +1,8 @@
 {% spaceless %}
-<div id='{{ menu.id }}-menu' class="dropdown-menu" role="menu">
+<div id='{{ menu.id }}-menu' class="dropdown-menu django-menus-dropdown" role="menu">
     {% for i in menu.visible_items %}
         {% if i.default_render %}
-            <a  class="django-menus-item dropdown-item {{ i.css }}" href="{{ i.href }}" {{ i.attributes }}>{{ i.name }}</a>
+            <a  class="django-menus-item dropdown-item {{ i.css }}"{% if i.dropdown %} id="{{ i.dropdown.id }}"{% endif %} href="{{ i.href }}" {{ i.attributes }}>{{ i.name }}{% if i.dropdown and i.show_caret %}<i class="fas fa-caret-right pt-1 {{ css.float_end }}"></i>{% endif %}</a>
         {% else %}
             {{ i.render }}
         {% endif %}
