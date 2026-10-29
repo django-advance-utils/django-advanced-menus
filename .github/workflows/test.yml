@@ -12,13 +12,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - python-version: '3.9'
-            django: 'Django>=3.2,<4.0'
           - python-version: '3.11'
-            django: 'Django>=4.2,<5.0'
+            django: 'Django>=5.2,<6.0'
           - python-version: '3.12'
-            django: 'Django>=5.0,<6.0'
+            django: 'Django>=5.2,<6.0'
           - python-version: '3.13'
+            django: 'Django>=6.0'
+          - python-version: '3.14'
             django: 'Django>=6.0'
 
     steps:
