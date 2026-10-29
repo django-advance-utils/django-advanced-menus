@@ -67,7 +67,7 @@
         }
         var two = typeof FloatingUIDOM !== 'undefined' && typeof show_menu === 'function';
         document.getElementById('menus-libs').innerHTML = [
-            flag(two, two ? 'Menus 2.0.0 code: positioned by Floating UI' : 'Old menus code (no Floating UI / show_menu)'),
+            flag(two, two ? 'Menus 2.x code: positioned by Floating UI' : 'Old menus code (no Floating UI / show_menu)'),
             'jQuery on page: ' + (typeof jQuery !== 'undefined') + ' (not used by menus)',
             'Popper on page: ' + (typeof Popper !== 'undefined') + ' (not used by menus)'
         ].join(' &nbsp;|&nbsp; ');
