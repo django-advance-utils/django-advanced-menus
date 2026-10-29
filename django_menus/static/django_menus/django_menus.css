@@ -12,3 +12,10 @@
         position: absolute;
 }
 
+
+/* A menu held to the window scrolls inside it (see show_menu). Without this, scrolling on past its
+   first or last entry hands the scroll to the page, which moves the menus with it. It has no effect
+   on a menu short enough not to scroll. */
+.dropdown-menu {
+        overscroll-behavior: contain;
+}
