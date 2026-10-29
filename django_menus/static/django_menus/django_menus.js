@@ -15,18 +15,28 @@ function menu_element(reference) {
 }
 
 // Shows the menu and keeps it positioned until hide_menu; without Floating UI, Bootstrap's CSS places it.
+// A menu taller than the room it is given scrolls inside the window (size), rather than running off it
+// so that the wheel scrolls the page instead. Beside its entry, shift lets a submenu slide up, so it
+// gets the window's height; above or below a button, a menu gets the room on the side flip chose.
 function show_menu(reference, menu, placement) {
     menu.classList.add('show');
     if (typeof FloatingUIDOM === 'undefined') {
         return;
     }
     var fui = FloatingUIDOM;
+    var edge = {padding: MENU_VIEWPORT_PADDING};
     stop_positioning(menu);
-    Object.assign(menu.style, {position: 'absolute', margin: '0', right: 'auto', bottom: 'auto'});
+    Object.assign(menu.style, {position: 'absolute', margin: '0', right: 'auto', bottom: 'auto',
+                               maxHeight: '', overflowY: ''});
     menu._menu_cleanup = fui.autoUpdate(reference, menu, function () {
         fui.computePosition(reference, menu, {
             placement: placement,
-            middleware: [fui.offset(MENU_GAP), fui.flip(), fui.shift()]
+            middleware: [fui.offset(MENU_GAP), fui.flip(edge), fui.shift(edge), fui.size(Object.assign({
+                apply: function (state) {
+                    Object.assign(state.elements.floating.style, {
+                        maxHeight: Math.max(0, state.availableHeight) + 'px', overflowY: 'auto'});
+                }
+            }, edge))]
         }).then(function (pos) {
             menu.style.left = pos.x + 'px';
             menu.style.top = pos.y + 'px';
@@ -50,6 +60,66 @@ function is_hovered(el) {
     return el.matches(':hover');
 }
 
+// Submenus: an entry that opens one carries the submenu's id, and the submenu (`<id>-menu`) is drawn
+// after the menu it belongs to rather than inside it, so the chain is found through the ids.
+
+// The menu holding the entry that opened this one, or null for a top-level menu.
+function parent_menu(menu) {
+    var entry = document.getElementById(menu.id.replace(/-menu$/, ''));
+    return entry && entry !== menu && entry.closest ? entry.closest('.dropdown-menu') : null;
+}
+
+// This menu and every menu above it.
+function menu_lineage(menu) {
+    var lineage = [];
+    while (menu && lineage.indexOf(menu) === -1) {
+        lineage.push(menu);
+        menu = parent_menu(menu);
+    }
+    return lineage;
+}
+
+// Every submenu opened from this menu's entries, and theirs in turn.
+function submenus(menu, found) {
+    found = found || [];
+    menu.querySelectorAll('a[id]').forEach(function (entry) {
+        var submenu = entry.id && document.getElementById(entry.id + '-menu');
+        if (submenu && found.indexOf(submenu) === -1) {
+            found.push(submenu);
+            submenus(submenu, found);
+        }
+    });
+    return found;
+}
+
+// Whether el is in this menu or in any of its submenus.
+function in_menu_tree(menu, el) {
+    return !!el && (menu.contains(el) || submenus(menu).some(function (submenu) {
+        return submenu.contains(el);
+    }));
+}
+
+// Whether the pointer is on this menu or on an open submenu below it.
+function menu_tree_hovered(menu) {
+    return is_hovered(menu) || submenus(menu).some(function (submenu) {
+        return submenu.classList.contains('show') && is_hovered(submenu);
+    });
+}
+
+// Whether a click landed on an entry that opens a submenu, which must not close the menu it is in.
+function opens_submenu(target) {
+    var entry = target.closest ? target.closest('a[id]') : null;
+    return !!(entry && entry.id && document.getElementById(entry.id + '-menu'));
+}
+
+// An entry was chosen: the menu it is in closes, with its submenus and every menu above it.
+function close_menu_chain(menu) {
+    menu_lineage(menu).forEach(function (el) {
+        hide_menu(el);
+        submenus(el).forEach(hide_menu);
+    });
+}
+
 // Click-opened menus also close on an outside click or Escape: Safari never fires focusout on a clicked link.
 function close_clicked_menus(except) {
     document.querySelectorAll('.dropdown-menu.clicked').forEach(function (menu) {
@@ -62,7 +132,7 @@ function close_clicked_menus(except) {
 document.addEventListener('click', function (e) {
     document.querySelectorAll('.dropdown-menu.clicked').forEach(function (menu) {
         var reference = document.getElementById(menu.id.replace(/-menu$/, ''));
-        if (!menu.contains(e.target) && !(reference && reference.contains(e.target))) {
+        if (!in_menu_tree(menu, e.target) && !(reference && reference.contains(e.target))) {
             hide_menu(menu);
         }
     });
@@ -82,7 +152,7 @@ document.addEventListener('keydown', function (e) {
 function close_on_focus_leaving(reference, menu) {
     function on_focusout(e) {
         var next = e.relatedTarget;
-        if (next && (menu.contains(next) || reference.contains(next))) {
+        if (next && (in_menu_tree(menu, next) || reference.contains(next))) {
             return;
         }
         if (menu.classList.contains('clicked') && !is_hovered(menu)) {
@@ -105,22 +175,38 @@ var dropdown_menu_function = function dropdown_menu_function(reference) {
     reference = menu_element(reference);
     var menu = document.getElementById(reference.id + '-menu');
 
+    // Closes the menu once the pointer has left its button, the menu and any submenu open below it -
+    // then its parent, which a submenu holds open, has been left too if the pointer is on neither.
+    function hide_if_left() {
+        if (!menu.classList.contains('show') || is_hovered(reference) || menu_tree_hovered(menu) ||
+                menu.classList.contains('clicked')) {
+            return;
+        }
+        hide_menu(menu);
+        submenus(menu).forEach(hide_menu);
+        var parent = parent_menu(menu);
+        if (parent && parent._django_menus_hide_if_left) {
+            parent._django_menus_hide_if_left();
+        }
+    }
+    menu._django_menus_hide_if_left = hide_if_left;
+
     function hide_later(e) {
-        setTimeout(function () {
-            if (!is_hovered(reference) && !is_hovered(menu) && !menu.classList.contains('clicked')) {
-                hide_menu(menu);
-            }
-        }, e.type === 'mouseleave' ? 300 : 0);
+        setTimeout(hide_if_left, e.type === 'mouseleave' ? 300 : 0);
     }
 
-    menu.addEventListener('click', function () {
-        hide_menu(menu);
+    menu.addEventListener('click', function (e) {
+        if (!opens_submenu(e.target)) {
+            close_menu_chain(menu);
+        }
     });
 
     function reference_hover(e) {
         if (is_hovered(reference)) {
+            // Every other open menu closes, but not the ones this is a submenu of.
+            var lineage = menu_lineage(menu);
             document.querySelectorAll('.menu-system.show').forEach(function (el) {
-                if (el !== menu) {
+                if (lineage.indexOf(el) === -1) {
                     hide_menu(el);
                 }
             });
@@ -154,9 +240,9 @@ var dropdown_menu_click = function dropdown_menu_click(reference) {
     reference = menu_element(reference);
     var menu = document.getElementById(reference.id + '-menu');
 
-    menu.addEventListener('click', function () {
-        if (menu.classList.contains('clicked')) {
-            hide_menu(menu);
+    menu.addEventListener('click', function (e) {
+        if (menu.classList.contains('clicked') && !opens_submenu(e.target)) {
+            close_menu_chain(menu);
         }
     });
 
@@ -210,6 +296,12 @@ ajax_helpers.command_functions.enable_context_menu = function (command) {
 // run them, and nested dropdowns in the menu html set themselves up with a <script>.
 function insert_context_menu(html) {
     var old = document.getElementById('context-menu');
+    // Its submenus are drawn beside it, not in it, so replacing it alone would leave them behind.
+    if (old) {
+        submenus(old).forEach(function (submenu) {
+            submenu.remove();
+        });
+    }
     var tmp = document.createElement('div');
     tmp.innerHTML = html;
     var nodes = Array.prototype.slice.call(tmp.childNodes);
@@ -313,7 +405,8 @@ ajax_helpers.command_functions.context_menu = function (command) {
         document.removeEventListener('click', context_menu_outside_click);
     }
     context_menu_outside_click = function (e) {
-        if (!menu.contains(e.target)) {
+        // A click in one of its submenus closes it too, unless it opened a further submenu.
+        if (!(in_menu_tree(menu, e.target) && opens_submenu(e.target))) {
             menu.style.display = 'none';
             // Remove the click event handler after hiding the menu
             document.removeEventListener('click', context_menu_outside_click);
@@ -322,9 +415,11 @@ ajax_helpers.command_functions.context_menu = function (command) {
     };
     document.addEventListener('click', context_menu_outside_click);
 
-    // Hides the menu as soon as you clicked it
-    menu.addEventListener('click', function () {
-        menu.style.display = 'none';
+    // Hides the menu as soon as you clicked it - unless the click opened a submenu
+    menu.addEventListener('click', function (e) {
+        if (!opens_submenu(e.target)) {
+            menu.style.display = 'none';
+        }
     });
 };
 
