@@ -12,7 +12,16 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version: '3.12'
+
+      - name: Check tag matches pyproject version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION=$(python -c "import tomllib,pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match pyproject.toml version $VERSION"
+            exit 1
+          fi
 
       - name: Build sdist and wheel
         run: |

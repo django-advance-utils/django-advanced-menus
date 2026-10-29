@@ -5,7 +5,7 @@ from ajax_helpers.utils import ajax_command, is_ajax
 from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 
-from django_menus.menu import AjaxMenuTemplateView
+from .menu import AjaxMenuTemplateView
 
 
 class AjaxMenuTabs(AjaxMenuTemplateView):
@@ -48,7 +48,7 @@ class AjaxMenuTabs(AjaxMenuTemplateView):
         context = self.get_context_data(**self.kwargs)
         self.create_ajax_commands(context)
         response = self.command_response()
-        response['Cache-Control'] = 'No-Cache,No-Store'
+        response['Cache-Control'] = 'no-cache, no-store'
         return response
 
     def get(self, request, *args, **kwargs):
@@ -74,6 +74,7 @@ class AjaxMenuTabs(AjaxMenuTemplateView):
         return context
 
     def get_context_data(self, **kwargs):
+        self.set_response_commands()
         context = super().get_context_data(**kwargs)
         if not is_ajax(self.request):
             context.update(self.main_context())
