@@ -1,0 +1,76 @@
+{% extends 'menu_examples/base.html' %}
+{% block contents %}
+<style>
+    #menus-version { font-size: 1.1rem; }
+    #menus-version .ok { color: #198754; font-weight: bold; }
+    #menus-version .bad { color: #dc3545; font-weight: bold; }
+    .stress-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin: .5rem; }
+    .stress-area { padding: 1rem; color: #fff; border-radius: .25rem; }
+    #stress-footer { position: fixed; left: 0; right: 0; bottom: 0; background: #f1f3f5; border-top: 2px solid #adb5bd;
+                     padding: .25rem .5rem; z-index: 1000; }
+    body { padding-bottom: 130px; }
+</style>
+
+<div id="menus-version" class="alert alert-primary m-2">
+    <div><strong>django-advanced-menus</strong>
+        installed: <code>{{ installed_version }}</code>,
+        served <code>django_menus.js</code> version: <code id="served-version">?</code>,
+        code from <code>{{ menus_path }}</code></div>
+    <div id="menus-libs"></div>
+    <div class="mt-1">Last chosen: <strong id="menus-chosen">nothing yet</strong></div>
+</div>
+
+<h5 class="mx-2">Top of the window</h5>
+<div class="stress-row" id="top-row">
+    <div>{{ menus.tall_top.render }}</div>
+    <div>{{ menus.nested_top_left.render }}</div>
+    <div>{{ menus.nested_top_right.render }}</div>
+</div>
+<div class="stress-row">
+    <div class="stress-area context_menu" id="ctx-left" style="background:#0d6efd;width:220px">Right click: nested context menu</div>
+    <div class="stress-area context_menu" id="ctx-tall" data-ajax="tall_context_menu" style="background:#6f42c1;width:220px">Right click: tall context menu (50)</div>
+    <div class="stress-area context_menu" id="ctx-right" style="background:#198754;width:220px">Right click near the right edge</div>
+</div>
+
+<div style="height:45vh"></div>
+<h5 class="mx-2">Middle of the page (scroll so it sits where you want)</h5>
+<div class="stress-row">
+    <div>{{ menus.tall_middle.render }}</div>
+</div>
+<div style="height:60vh"></div>
+
+<div id="stress-footer">
+    <div class="stress-row">
+        <div>{{ menus.tall_bottom.render }}</div>
+        <div>{{ menus.nested_bottom_left.render }}</div>
+        <div>{{ menus.nested_bottom_right.render }}</div>
+    </div>
+    <div class="stress-row">
+        <div class="stress-area context_menu" id="ctx-bottom-left" style="background:#fd7e14;width:260px">Right click: bottom left</div>
+        <div class="stress-area context_menu" id="ctx-bottom-right" style="background:#d63384;width:260px">Right click: bottom right</div>
+    </div>
+</div>
+
+<script>
+    function menus_demo_chose(label) {
+        document.getElementById('menus-chosen').textContent = label;
+    }
+    (function () {
+        var script = Array.prototype.find.call(document.scripts, function (s) {
+            return /django_menus\.js/.test(s.src);
+        });
+        var match = script && /[?&]v(?:ersion)?=([^&]+)/.exec(script.src);
+        document.getElementById('served-version').textContent = match ? decodeURIComponent(match[1]) : 'no version on URL';
+
+        function flag(ok, text) {
+            return '<span class="' + (ok ? 'ok' : 'bad') + '">' + (ok ? '✔ ' : '✘ ') + text + '</span>';
+        }
+        var two = typeof FloatingUIDOM !== 'undefined' && typeof show_menu === 'function';
+        document.getElementById('menus-libs').innerHTML = [
+            flag(two, two ? 'Menus 2.0.0 code: positioned by Floating UI' : 'Old menus code (no Floating UI / show_menu)'),
+            'jQuery on page: ' + (typeof jQuery !== 'undefined') + ' (not used by menus)',
+            'Popper on page: ' + (typeof Popper !== 'undefined') + ' (not used by menus)'
+        ].join(' &nbsp;|&nbsp; ');
+    })();
+</script>
+{% endblock %}

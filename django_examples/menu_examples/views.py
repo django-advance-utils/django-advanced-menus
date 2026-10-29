@@ -1,4 +1,5 @@
 import datetime
+import os
 import threading
 import time
 
@@ -27,6 +28,7 @@ def setup_main_menu(request):
         ('context_examples', 'Context Examples'),
         ('ajax_dropdown_menu_examples', 'Ajax-DropDown Menu Examples'),
         ('repeat_click_examples', 'Repeat Clicks'),
+        ('menu_stress_test', 'Stress Test'),
     )
     return menu
 
@@ -473,3 +475,91 @@ class AjaxDropDownMenu(MainMenu):
 
     def ajax_dropdown_menu(self, *args, pos, **kwargs):
         return self.add_ajax_dropdown_menu('view1', 'view2', 'view3', ('view4', 'View 4'), pos=pos)
+
+
+def chosen(label):
+    """A menu entry that reports itself on the page rather than navigating away."""
+    return f"menus_demo_chose('{label}')", label, MenuItem.JAVASCRIPT
+
+
+def leaves(prefix, count):
+    return [chosen(f'{prefix} {i}') for i in range(1, count + 1)]
+
+
+def nested_submenu(label, depth, placement='right-start'):
+    """A submenu of a few entries, a tall one, and a submenu of its own until depth runs out."""
+    entries = leaves(label, 4)
+    entries.append(MenuItem(menu_display=f'{label}: tall (30)', placement=placement,
+                            dropdown=leaves(f'{label} tall', 30)))
+    if depth > 1:
+        entries += [DividerItem(), nested_submenu(f'{label}.1', depth - 1, placement),
+                    nested_submenu(f'{label}.2', depth - 1, placement)]
+    return MenuItem(menu_display=label, placement=placement, dropdown=entries)
+
+
+class MenuStressTest(ContextMenuMixin, MainMenu):
+    """Tall menus and nested submenus at every edge of the window, for PRs #11 and #12."""
+    template_name = 'menu_examples/menu_stress_test.html'
+
+    @staticmethod
+    def tall_with_submenus(prefix, count):
+        """count entries, with a submenu near the top and one at the very bottom."""
+        entries = leaves(prefix, count)
+        entries.insert(3, nested_submenu(f'{prefix} sub', 2))
+        entries += [DividerItem(), nested_submenu(f'{prefix} last', 3)]
+        return entries
+
+    def tall_menus(self, name):
+        self.add_menu(name, 'button_group').add_items(
+            MenuItem(menu_display='Tall hover (30)', dropdown=self.tall_with_submenus('Hover', 30)),
+            MenuItem(menu_display='Tall click (30)', no_hover=True, css_classes='btn-secondary',
+                     dropdown=self.tall_with_submenus('Click', 30)),
+            MenuItem(menu_display='Very tall (80)', css_classes='btn-info',
+                     dropdown=self.tall_with_submenus('Very tall', 80)),
+            MenuItem(menu_display='Short (5)', css_classes='btn-success', dropdown=self.tall_with_submenus('Short', 5)),
+            AjaxMenuDropDownItem(menu_display='Ajax tall (30)', css_classes='btn-warning'),
+        )
+
+    def nested_menus(self, name, placement='bottom-start'):
+        self.add_menu(name, 'button_group').add_items(
+            MenuItem(menu_display='Nested (3 levels)', placement=placement,
+                     dropdown=(*leaves('Top', 3), DividerItem(), nested_submenu('A', 3), nested_submenu('B', 2))),
+            MenuItem(menu_display='Nested click', no_hover=True, placement=placement, css_classes='btn-secondary',
+                     dropdown=(*leaves('Top', 3), nested_submenu('C', 3))),
+            MenuItem(menu_display='Nested, opens left', placement=placement, css_classes='btn-info',
+                     dropdown=(*leaves('Top', 3), nested_submenu('L', 3, placement='left-start'))),
+        )
+
+    def setup_menu(self):
+        super().setup_menu()
+        self.menus['main_menu'].active = 'menu_stress_test'
+        self.tall_menus('tall_top')
+        self.nested_menus('nested_top_left')
+        self.nested_menus('nested_top_right', placement='bottom-end')
+        self.tall_menus('tall_middle')
+        self.tall_menus('tall_bottom')
+        self.nested_menus('nested_bottom_left')
+        self.nested_menus('nested_bottom_right', placement='bottom-end')
+
+    def ajax_context_menu(self, *args, **kwargs):
+        return self.add_context_menu(HeaderItem('Context menu'), *leaves('Context', 4), DividerItem(),
+                                     nested_submenu('Ctx A', 3), nested_submenu('Ctx B', 2),
+                                     MenuItem(menu_display='Tall submenu (40)', placement='right-start',
+                                              dropdown=leaves('Ctx tall', 40)))
+
+    def ajax_tall_context_menu(self, *args, **kwargs):
+        return self.add_context_menu(HeaderItem('Tall context menu'), *self.tall_with_submenus('Tall ctx', 50))
+
+    def ajax_dropdown_menu(self, *args, pos, **kwargs):
+        return self.add_ajax_dropdown_menu(*self.tall_with_submenus('Ajax', 30), pos=pos)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        try:
+            from importlib.metadata import version, PackageNotFoundError
+            context['installed_version'] = version('django-advanced-menus')
+        except PackageNotFoundError:
+            context['installed_version'] = 'not pip-installed'
+        import django_menus
+        context['menus_path'] = os.path.dirname(django_menus.__file__)
+        return context

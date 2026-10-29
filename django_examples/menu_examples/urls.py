@@ -27,6 +27,8 @@ urlpatterns = [
     path('repeat-clicks/bump/', views.BumpCounter.as_view(), name='bump_counter'),
     path('repeat-clicks/reset/', views.ResetCounter.as_view(), name='reset_counter'),
 
+    path('stress-test/', views.MenuStressTest.as_view(), name='menu_stress_test'),
+
     path('modal/', views.TestModal.as_view(), name='test_modal'),
     path('modal/<str:slug>', views.TestModal.as_view(), name='test_modal'),
     path('modal64/<str:base64>', views.TestModal.as_view(), name='test_modal64'),

@@ -7,8 +7,9 @@ services:
   volumes:
    - ./django_examples/:/app
    - ./django_menus/:/menus/django_menus
+   - ./:/menus_src:ro
    - /var/run/docker.sock:/var/run/docker.sock
-  command: bash -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8009"
+  command: bash -c "cp -r /menus_src /tmp/menus_build && pip install --no-deps --quiet /tmp/menus_build && python manage.py migrate && python manage.py runserver 0.0.0.0:8009"
   environment:
    - PYTHONPATH=/menus
   ports:
@@ -20,7 +21,8 @@ services:
   volumes:
    - ./django_examples/:/app
    - ./django_menus/:/menus/django_menus
-  command: bash -c "python manage.py migrate --settings=django_examples.settings_bs5 && python manage.py runserver 0.0.0.0:8010 --settings=django_examples.settings_bs5"
+   - ./:/menus_src:ro
+  command: bash -c "cp -r /menus_src /tmp/menus_build && pip install --no-deps --quiet /tmp/menus_build && python manage.py migrate --settings=django_examples.settings_bs5 && python manage.py runserver 0.0.0.0:8010 --settings=django_examples.settings_bs5"
   environment:
    - PYTHONPATH=/menus
   ports:
