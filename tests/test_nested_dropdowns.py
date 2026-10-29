@@ -34,4 +34,7 @@ class NestedDropdownTests(SimpleTestCase):
     def test_a_plain_entry_has_no_id(self):
         rendered, _ = self.render(item('Plain'))
 
-        self.assertNotRegex(rendered, r'<a [^>]*dropdown-item[^>]*id=')
+        entries = re.findall(r'<a [^>]*dropdown-item[^>]*>', rendered)
+        self.assertEqual(len(entries), 2)
+        for tag in entries:
+            self.assertNotRegex(tag, r'\sid=')
