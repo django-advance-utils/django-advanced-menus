@@ -16,6 +16,8 @@ does. It depends on [ajax-advanced-helpers](https://github.com/django-advance-ut
 pip install django-advanced-menus
 ```
 
+Needs Python 3.11 or later; it is tested on Django 5.2 and 6.0. 2.0.0 was the last release to support Python 3.9 and 3.10.
+
 Add to `INSTALLED_APPS`:
 
 ```python
