@@ -7,6 +7,9 @@
 // Returns an object with one method, `update()`, which lays the menu out now. Call it after
 // the menu is shown: a display:none element measures 0x0, so a layout done before the menu is
 // visible has no width to work with and cannot see that it overflows the window.
+//
+// Every layout first fits the menu to the window (fit_menu_to_window), so a menu too tall for
+// the room on either side of its button scrolls instead of covering the button.
 function make_menu_popper(reference, menu, placement) {
     var reference_el = reference.jquery ? reference[0] : reference;
     var menu_el = menu.jquery ? menu[0] : menu;
@@ -14,6 +17,7 @@ function make_menu_popper(reference, menu, placement) {
         var instance = Popper.createPopper(reference_el, menu_el, {placement: placement});
         return {
             update: function () {
+                fit_menu_to_window(reference_el, menu_el, placement, true);
                 // Popper 2's update() is asynchronous (a promise settled on the next frame), so
                 // the menu would paint once where it last was before moving. forceUpdate() lays
                 // it out synchronously, which is what Popper 1's update() did.
@@ -22,17 +26,62 @@ function make_menu_popper(reference, menu, placement) {
         };
     }
     if (typeof Popper !== 'undefined') {
-        return new Popper(reference_el, menu_el, {placement: placement});
+        var legacy = new Popper(reference_el, menu_el, {placement: placement});
+        return {
+            update: function () {
+                fit_menu_to_window(reference_el, menu_el, placement, true);
+                legacy.update();
+            }
+        };
     }
     var at_end = placement.indexOf('end') > -1;
     return {
         update: function () {
+            // Dropped below its button whatever the placement says, so it is fitted to below.
+            fit_menu_to_window(reference_el, menu_el, placement, false);
             menu_el.style.position = 'absolute';
             menu_el.style.top = '100%';
             menu_el.style.left = at_end ? 'auto' : '0';
             menu_el.style.right = at_end ? '0' : 'auto';
         }
     };
+}
+
+// The gap kept between a fitted menu and the edge of the window: the context menu's below, and
+// more than the 5px Popper 1 keeps, so a menu fitted to a side is one Popper sees fits there.
+var MENU_WINDOW_PADDING = 8;
+
+// Holds a menu above or below its button to the room there, scrolling what does not fit, as the
+// context menu below holds one to the window. Only when it fits on neither side: a menu that
+// fits on one is left its full height, and Popper places it there. Without this, Popper puts a
+// menu too tall for either side on one of them and then pushes it back inside the window --
+// over its own button. A menu opened on hover then lands under the pointer that opened it, so
+// the click meant for the button picks whichever item is underneath.
+//
+// can_flip: whether the positioner may put the menu on either side of its button. When it may,
+// the menu is held to the larger room and Popper flips it there if that is the far side; when it
+// may not (no Popper: the menu is dropped below), it is held to the room below.
+function fit_menu_to_window(reference_el, menu_el, placement, can_flip) {
+    // Measured at its own height, so a menu fitted to a smaller window is measured afresh.
+    menu_el.style.maxHeight = '';
+    menu_el.style.overflowY = '';
+    var side = placement.split('-')[0];
+    if (side !== 'top' && side !== 'bottom') {
+        return;
+    }
+    var button = reference_el.getBoundingClientRect();
+    var style = window.getComputedStyle(menu_el);
+    var margins = (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
+    var height = menu_el.getBoundingClientRect().height + margins;
+    // clientHeight, not innerHeight: the window less any horizontal scrollbar, as Popper sees it.
+    var below = document.documentElement.clientHeight - button.bottom - MENU_WINDOW_PADDING;
+    var above = button.top - MENU_WINDOW_PADDING;
+    var room = can_flip ? Math.max(below, above) : below;
+    if (height <= room) {
+        return;
+    }
+    menu_el.style.maxHeight = Math.max(room - margins, 0) + 'px';
+    menu_el.style.overflowY = 'auto';
 }
 
 var dropdown_menu_function = function dropdown_menu_function(reference) {
