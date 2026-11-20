@@ -596,6 +596,43 @@ self.add_menu('actions', 'button_group',
               button_defaults={'save': MenuItemDisplay('Save', 'fas fa-check', 'btn-outline-primary')})
 ```
 
+## Attributes From Where an Item Was Made
+
+`DJANGO_MENUS_ITEM_ATTRIBUTES` names a function that every item is passed to as it is made. It answers
+a dict of attributes to write into the item's tag beside its own, or `None` for none:
+
+```python
+# settings.py
+DJANGO_MENUS_ITEM_ATTRIBUTES = 'myproject.menus.item_attributes'
+```
+
+It is called from `BaseMenuItem.__init__`, before a subclass has set the item's fields, so the code that
+made the item is still on the stack. That is what it is for: a debugging overlay, say, that names the
+line of code each item came from.
+
+```python
+# myproject/menus.py
+import sys
+
+from django.conf import settings
+
+
+def item_attributes(item):
+    if not settings.DEBUG:
+        return None
+    frame = sys._getframe(1)
+    # Up past the library and every __init__ on the way, to the code that made the item.
+    while frame is not None and (
+        frame.f_globals.get('__name__', '').startswith('django_menus') or frame.f_code.co_name == '__init__'
+    ):
+        frame = frame.f_back
+    return {'data-made-at': f'{frame.f_code.co_filename}:{frame.f_lineno}'} if frame else None
+```
+
+The attributes follow the rules of `attributes=` (see Escaping): a name that is not a plain attribute name
+is dropped and a value is escaped. Only `MenuItem` and its subclasses write attributes, so what a
+divider or header is given is not drawn. Without the setting nothing is called.
+
 ## Escaping
 
 **Changed in 1.0.1.** `MenuItemDisplay.display()` used to return `mark_safe(self.text)`, so every

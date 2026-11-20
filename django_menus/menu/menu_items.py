@@ -1,17 +1,44 @@
 import json
 import re
+from functools import lru_cache
 from urllib.parse import urlparse, urlencode
 
 from ajax_helpers.templatetags.ajax_helpers import button_javascript
+from django.conf import settings
 from django.template.loader import render_to_string
 from django.urls import reverse, resolve, Resolver404
 from django.utils.html import conditional_escape, format_html
+from django.utils.module_loading import import_string
 from django.utils.safestring import mark_safe
 
 from .. import css_framework
 
 
 REPEAT_CLICK_ATTRIBUTE = 'data-django-menus-repeat-ms'
+
+
+@lru_cache(maxsize=None)
+def _import_hook(path):
+    return import_string(path)
+
+
+def item_made_attributes(item):
+    """What the project's ``DJANGO_MENUS_ITEM_ATTRIBUTES`` function answers for ``item``, or None.
+
+    The setting is a dotted path to a function taking the item, called once, as the item is made,
+    and answering a dict of attributes to write into the item's tag beside its own, or None for
+    none. It is called from ``BaseMenuItem.__init__``, before a subclass has set the item's own
+    fields, so the code that made the item is still on the stack: it is for saying where an item
+    came from (a debugging overlay naming the line that made each one), not for reading what the
+    item is. With no setting it costs one settings lookup.
+
+    The attributes go through the same rules as ``attributes=``: a name that is not a plain
+    attribute name is dropped, and a value is escaped.
+    """
+    path = getattr(settings, 'DJANGO_MENUS_ITEM_ATTRIBUTES', None)
+    if not path:
+        return None
+    return _import_hook(path)(item)
 
 
 def coerce_repeat_click_ms(value, source):
@@ -58,6 +85,7 @@ class BaseMenuItem:
         self.visible = visible
         self._badge = badge
         self._menu = menu
+        self.made_attributes = item_made_attributes(self)
 
     @property
     def menu(self):
@@ -394,6 +422,10 @@ class MenuItem(BaseMenuItem):
                 attributes.update(self.external_function(self.menu_config['attributes']))
         attributes.update(self._attributes)
         attributes.update(self.menu_display.attributes())
+        # Where the item was made (``item_made_attributes``). After the item's own, so a project's hook
+        # is never overwritten by an item it knows nothing about; a clash is the hook's to avoid.
+        if getattr(self, 'made_attributes', None):
+            attributes.update(self.made_attributes)
         self.add_accessible_name(attributes)
         if attributes:
             # A value is written inside double quotes, so it is escaped unless it is marked safe
