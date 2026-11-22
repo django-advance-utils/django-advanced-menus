@@ -27,10 +27,10 @@ def item_made_attributes(item):
 
     The setting is a dotted path to a function taking the item, called once, as the item is made,
     and answering a dict of attributes to write into the item's tag beside its own, or None for
-    none. It is called from ``BaseMenuItem.__init__``, before a subclass has set the item's own
-    fields, so the code that made the item is still on the stack: it is for saying where an item
-    came from (a debugging overlay naming the line that made each one), not for reading what the
-    item is. With no setting it costs one settings lookup.
+    none. It is called from ``BaseMenuItem.__init__``, before ``MenuItem`` has set its fields, so
+    the code that made the item is still on the stack: it is for saying where an item came from (a
+    debugging overlay naming the line that made each one), not for reading what the item is. With
+    no setting it costs one settings lookup.
 
     The attributes go through the same rules as ``attributes=``: a name that is not a plain
     attribute name is dropped, and a value is escaped.

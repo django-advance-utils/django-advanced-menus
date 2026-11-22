@@ -606,8 +606,8 @@ a dict of attributes to write into the item's tag beside its own, or `None` for 
 DJANGO_MENUS_ITEM_ATTRIBUTES = 'myproject.menus.item_attributes'
 ```
 
-It is called from `BaseMenuItem.__init__`, before a subclass has set the item's fields, so the code that
-made the item is still on the stack. That is what it is for: a debugging overlay, say, that names the
+It is called from `BaseMenuItem.__init__`, before `MenuItem` has set its fields, so the code that made the
+item is still on the stack. That is what it is for: a debugging overlay, say, that names the
 line of code each item came from.
 
 ```python
